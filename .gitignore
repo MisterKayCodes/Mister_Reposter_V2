@@ -1,0 +1,39 @@
+# Python related
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Virtual environment
+venv/
+.env/
+env/
+
+# Byte-compiled / optimized / DLL files
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# SQLite database file
+*.sqlite3
+*.db
+
+# Telethon session files
+*.session
+*.session-journal
+
+# Logs
+*.log
+
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
