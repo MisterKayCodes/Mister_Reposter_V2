@@ -1,82 +1,68 @@
-
 # Mister_ReposterV2
 
-A Telegram repost bot that allows users to copy posts from one channel or group to another with scheduling, filtering, and subscription management.
+A modular, scalable Telegram repost bot designed to bridge channels using **Telethon** (User API) and **Aiogram** (Bot API). Built with a strict "Genius in a Dark Room" architecture to ensure logic, storage, and interface remain decoupled.
 
 ---
 
-## Phase 0: Setup & Preparation
+## 🚀 Current Status: Phase 1 (MVP) COMPLETED
+The bot has successfully achieved MVP status. Core functionality for text-based reposting, session management, and startup recovery is fully operational.
 
-This project is currently in the initial setup and preparation phase. The core goals here are to establish the foundation for a scalable and maintainable repost bot.
-
-### Project Goals for Phase 0
-
-- Initialize a Git repository with proper `.gitignore` for Python, Telethon, SQLite, and related files.
-- Create a comprehensive `README.md` with project overview and MVP goals.
-- Set up a Python virtual environment and pin initial dependencies.
-- Create the base folder structure and placeholder files with docstrings and TODO comments to organize the codebase.
-
-### Folder Structure
-
-```
-
-/bot           # Telegram bot handlers, commands, and UI
-/core          # Core repost and subscription logic
-/data          # Database models, schema, and repository layer
-/providers     # Telegram API wrappers, Telethon client integration
-/services      # Orchestration, scheduling, session management
-/utils         # Helper utilities (logging, validation, media cache)
-main.py        # Application entry point
-config.py      # Configuration and environment variable loading
-container.py   # Dependency injection and wiring
-
-````
-
-### Dependencies (Initial)
-
-- `aiogram==3.4.1` — Telegram bot framework
-- `telethon==1.36.0` — Telegram user client for session management and reposting
-- `SQLAlchemy==2.0.25` — ORM for database modeling and querying
-- `alembic==1.13.0` — Database migrations
-- `pytest==7.4.0` — Testing framework
-- `python-dotenv==1.0.0` — Environment variable loading
-- Additional dependencies for async DB (`aiosqlite`), HTTP requests (`httpx`), and utilities (`loguru`, `orjson`, etc.) will be added as needed.
+### ✅ Completed in Phase 1
+- **Architectural Foundation:** Implemented Folder Anatomy (Core, Data, Bot, Providers, Services).
+- **Session Management:** Securely handles StringSessions and `.session` files with background storage.
+- **Persistence Layer:** SQLite integration via SQLAlchemy 2.0 with a "Librarian" (Repository) pattern.
+- **Non-Blocking Listeners:** Background task orchestration using `asyncio` to allow multi-user handling.
+- **Startup Recovery:** Automatic restoration of active repost listeners upon bot reboot.
+- **Connection Pooling:** Smart client reuse to prevent "Database is locked" errors in SQLite.
 
 ---
 
-## Next Steps After Phase 0
+## 🛠️ Project Architecture
 
-- Begin implementing core repost logic and subscription management.
-- Design and initialize database schema.
-- Develop Telegram bot command handlers and UI.
-- Build service layers for repost scheduling and session management.
-- Write tests for core functionality.
+```text
+/bot           # The Mouth: Aiogram handlers, commands, and FSM states.
+/core          # The Brain: Pure business logic (Cleaning, filtering).
+/data          # The Vault: Models and the Librarian (Repository).
+/providers     # The Eyes: Telethon client and external API wrappers.
+/services      # The Nervous System: Orchestration and background tasks.
+/utils         # The Toolbox: Shared helpers and logging.
+main.py        # The Skeleton: Application entry point.
+config.py      # The DNA: Pydantic-validated environment settings.
+container.py   # The Wiring: Dependency Injection (In Progress).
+Use code with caution.
 
----
+📈 Next Steps (Phase 2)
+Media Support: Implementing logic to handle Photos, Videos, and Media Groups.
+Link Sanitization: Auto-formatting of source/destination links to raw entities.
+Advanced Filtering: Link removal, keyword blacklists, and caption modification.
+Deployment: Dockerization and VPS setup with Rule 18 (Safe Deployment Protocol).
+⚙️ Getting Started
+Clone & Setup:
+bash
+git clone <repo-url>
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+Use code with caution.
 
-## Getting Started
+Configuration:
+Create a .env file in the root.
+Add your BOT_TOKEN, API_ID, and API_HASH.
+Run:
+bash
+python main.py
+Use code with caution.
 
-1. Clone the repository (to be created)
-2. Set up a Python virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-````
+⚖️ Development Rules
+This project follows the Level-Up Dev Rulebook (2025):
+The System is always in a known state.
+Store all critical state in durable storage.
+Logic must be explicit and readable.
+No "smart" guessing.
+Separate business logic from integrations (Rule 11).
+Expect failure, design for recovery (Rule 7).
 
-3. Install pinned dependencies:
 
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Run initial checks and start project scaffolding.
 
----
 
-## Contact & Contribution
-
-For now, this is a personal project under active development. Contributions and suggestions are welcome once core functionality is stable.
-
----
-
-*Built with ❤️ by Mister
-
+Built with ❤️ by Mister
