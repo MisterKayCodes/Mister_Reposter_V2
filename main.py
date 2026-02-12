@@ -7,6 +7,8 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
+from bot.middleware import SessionGuardMiddleware
+
 from config import config
 from data.database import init_db
 from bot.routers import register_all_routers
@@ -36,6 +38,7 @@ async def main():
         # 3. Setup the Mouth (Bot Interface)
         dp = Dispatcher(storage=MemoryStorage())
         register_all_routers(dp)
+        dp.message.outer_middleware(SessionGuardMiddleware())
         logger.info("Bot routers registered successfully.")
 
         # 4. Start the Heartbeat

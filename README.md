@@ -1,68 +1,99 @@
-# Mister_ReposterV2
+# PROJECT: MISTER REPOSTER V2
+# LEAD ENGINEER: MISTER
+# AMBIENCE: DRAKE - FOCUSED
 
-A modular, scalable Telegram repost bot designed to bridge channels using **Telethon** (User API) and **Aiogram** (Bot API). Built with a strict "Genius in a Dark Room" architecture to ensure logic, storage, and interface remain decoupled.
-
----
-
-## 🚀 Current Status: Phase 1 (MVP) COMPLETED
-The bot has successfully achieved MVP status. Core functionality for text-based reposting, session management, and startup recovery is fully operational.
-
-### ✅ Completed in Phase 1
-- **Architectural Foundation:** Implemented Folder Anatomy (Core, Data, Bot, Providers, Services).
-- **Session Management:** Securely handles StringSessions and `.session` files with background storage.
-- **Persistence Layer:** SQLite integration via SQLAlchemy 2.0 with a "Librarian" (Repository) pattern.
-- **Non-Blocking Listeners:** Background task orchestration using `asyncio` to allow multi-user handling.
-- **Startup Recovery:** Automatic restoration of active repost listeners upon bot reboot.
-- **Connection Pooling:** Smart client reuse to prevent "Database is locked" errors in SQLite.
+## OVERVIEW
+Mister Reposter V2 is a "set-and-forget" Telegram bot. It connects to your personal Telegram account and automatically copies messages from one channel to another. It is built to be stable, fast, and resilient—meaning if it crashes, it wakes up and keeps working without you touching it.
 
 ---
 
-## 🛠️ Project Architecture
+## CORE FEATURES
+* MULTI-ACCOUNT: Link your own Telegram session to act as the "sender."
+* ONE-STOP LISTENING: One connection manages all your channel links at once to save CPU.
+* ALL MEDIA SUPPORTED: Copies text, photos, videos, and documents perfectly.
+* AUTO-RECOVERY: If the bot reboots, it automatically restarts all your listeners.
+* THE BURN NOTICE: One command (/deleteall) wipes your data for a clean slate.
+* CLEAN INPUT: No need to worry about messy links; the bot cleans them for you.
 
-```text
-/bot           # The Mouth: Aiogram handlers, commands, and FSM states.
-/core          # The Brain: Pure business logic (Cleaning, filtering).
-/data          # The Vault: Models and the Librarian (Repository).
-/providers     # The Eyes: Telethon client and external API wrappers.
-/services      # The Nervous System: Orchestration and background tasks.
-/utils         # The Toolbox: Shared helpers and logging.
-main.py        # The Skeleton: Application entry point.
-config.py      # The DNA: Pydantic-validated environment settings.
-container.py   # The Wiring: Dependency Injection (In Progress).
-Use code with caution.
+---
 
-📈 Next Steps (Phase 2)
-Media Support: Implementing logic to handle Photos, Videos, and Media Groups.
-Link Sanitization: Auto-formatting of source/destination links to raw entities.
-Advanced Filtering: Link removal, keyword blacklists, and caption modification.
-Deployment: Dockerization and VPS setup with Rule 18 (Safe Deployment Protocol).
-⚙️ Getting Started
-Clone & Setup:
-bash
-git clone <repo-url>
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-Use code with caution.
-
-Configuration:
-Create a .env file in the root.
-Add your BOT_TOKEN, API_ID, and API_HASH.
-Run:
-bash
-python main.py
-Use code with caution.
-
-⚖️ Development Rules
-This project follows the Level-Up Dev Rulebook (2025):
-The System is always in a known state.
-Store all critical state in durable storage.
-Logic must be explicit and readable.
-No "smart" guessing.
-Separate business logic from integrations (Rule 11).
-Expect failure, design for recovery (Rule 7).
+## ARCHITECTURE: THE ORGANISM
+We use a "Service-Oriented" setup to keep the brain separate from the mouth.
 
 
 
+* BOT LAYER (THE MOUTH): Handles the buttons and commands you see in Telegram.
+* SERVICE LAYER (THE NERVOUS SYSTEM): The middleman that connects the bot to the database.
+* TELETHON LAYER (THE EYES): The actual connection to Telegram that watches for messages.
+* DATABASE LAYER (THE VAULT): Where your settings and links are safely stored.
+* CORE LAYER (THE BRAIN): Simple logic that cleans text and checks rules.
 
-Built with ❤️ by Mister
+---
+
+## PROJECT STRUCTURE
+Mister_ReposterV2/
+│
+├── bot/                # The "Mouth" (Telegram Interface)
+│   ├── handlers.py     # Command logic (/start, /createpair)
+│   ├── middleware.py   # The Gatekeeper (Security check)
+│   └── states.py       # FSM (Tracking your steps)
+│
+├── services/           # The "Nervous System" (Logic Middleman)
+│   ├── repost_engine.py# Managing the listeners
+│   └── session_service.py # Saving your login files
+│
+├── providers/          # The "Eyes" (Telegram Connection)
+│   └── telethon_client.py # Talking to Telegram servers
+│
+├── data/               # The "Vault" (Storage)
+│   ├── repository.py   # Librarian (Saving/Loading data)
+│   ├── models.py       # Database blueprints
+│   └── database.py     # The "Concrete Mixer" (DB Setup)
+│
+├── core/               # The "Brain" (Pure Logic)
+│   └── logic.py        # Cleaning links and text
+│
+├── config.py           # Settings and Secret Keys
+├── main.py             # The "Heartbeat" (Startup file)
+└── requirements.txt    # Essential tools needed to run
+ 
+---
+
+## SETUP INSTRUCTIONS
+
+1. GET THE FILES:
+   git clone https://github.com/yourusername/Mister_ReposterV2.git
+   cd Mister_ReposterV2
+
+2. PREPARE THE TOOLS:
+   python -m venv venv
+   source venv/bin/activate  # Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+
+3. ADD YOUR KEYS:
+   Create a .env file and add your API_ID, API_HASH, and BOT_TOKEN.
+
+4. START THE ENGINE:
+   python main.py
+
+---
+
+## COMMAND LIST
+/start          - Get started and register.
+/uploadsession  - Connect your Telegram account.
+/createpair     - Link a "From" channel to a "To" channel.
+/viewpairs      - See all your active links.
+/stoppair <id>  - Stop a specific link.
+/deleteall      - Wipe everything and start fresh.
+
+---
+
+## DEVELOPMENT RULES
+* KEEP IT SIMPLE: No complex code where a simple one works.
+* BE EXPLICIT: The bot shouldn't guess; it should follow your orders.
+* NO LEAKS: Always close connections and clean up data.
+* STAY FOCUSED: Every file has one job and stays in its lane.
+
+---
+REVISION: 2.5.0
+STATUS: OPERATIONAL

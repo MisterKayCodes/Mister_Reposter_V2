@@ -106,6 +106,175 @@
   - **The Leash:** Added `asyncio.wait_for` to Telethon connections.
   - **Connection Pooling:** Refactored `send_message` to reuse the active client from `active_clients`, killing the locking error.
 
+
+### 1.11 Stability & DNA Alignment
+- **Progress:**
+  - Implemented command filtering in `bot/handlers.py` to prevent "Command-as-Data" errors.
+  - Aligned `services/` layer with `config.py` data types (int/str vs SecretStr).
+  - Cleaned and re-seeded the Vault for a 100% healthy baseline.
+- **Bugs / Issues:**
+  - **AttributeError:** `str` or `int` object has no attribute `get_secret_value` (DNA mismatch).
+  - **ValueError:** `Cannot find any entity corresponding to "/viewpairs"`. The Nervous System tried to "watch" a command as a channel.
+  - **Task Exception:** Background tasks were crashing silently due to unhandled entity resolution.
+- **Fixes / Solutions:**
+  - **Usage Alignment:** Removed `.get_secret_value()` calls for non-SecretStr variables.
+  - **The Command Shield:** Added a `.startswith("/")` check in the Mouth's destination handler to reject commands as channel IDs.
+  - **Wipe & Reset:** Purged the SQLite file to remove "corrupt" channel names injected during faulty testing.
+
 ### Status
 - **Current State:** MVP achieved. Text reposting is functional and resilient.
 - **Next Task:** Phase 2 - Media support (Photos/Videos) and `destination_id` sanitation for `https://t.me` links.
+
+
+
+## Phase 2: Sensory Evolution & The Immune System
+**Status: IN PROGRESS (BLOCKED)**
+
+### 2.1 Media Support & Engine Refactor
+
+### Progress
+- Refactored `services/repost_engine.py` to support media (Photos, Videos, Documents) in addition to text.
+- Implemented in-memory media processing to avoid temporary file clutter and disk pollution.
+- Extended Telethon provider capabilities to handle non-text payloads.
+
+### Bugs / Issues
+- **UNVERIFIED IMPLEMENTATION:** Media reposting logic has not yet been validated in live conditions.
+- **Systemic Blocker:** Media testing cannot proceed because repost pairs cannot be created or viewed due to Gatekeeper restrictions.
+
+### Fixes / Solutions
+- Integrated `download_media` (returning raw bytes) and `send_file` into the Telethon provider to enable full message replication.
+- Deferred live media validation until repost pair creation (`/createpair`) and inspection (`/viewpairs`) are unblocked.
+
+---
+
+### 2.2 The Gatekeeper (Middleware)
+
+### Progress
+- Created `bot/middleware.py` implementing `SessionGuardMiddleware`.
+- Introduced a centralized access-control layer to protect session-dependent commands.
+
+### Bugs / Issues
+- **ModuleNotFoundError:** Bot crashed on startup due to incorrect imports referencing `database.engine` instead of `data.database`.
+- **Critical Blocker – Access Deadlock:**  
+  The Gatekeeper is currently preventing access to core commands (`/createpair`, `/viewpairs`) even when valid session files exist.
+- **The Access Contradiction:** Users receive "Access Denied" immediately after successful session uploads due to database commit latency.
+- **Confusing UX:** Initial denial messages used metaphorical or technical language that did not guide users toward resolution.
+
+### Fixes / Solutions
+- **Architecture Alignment:** Corrected middleware imports to reflect the actual `data/` directory structure.
+- **The Double-Check Logic:** Updated the Gatekeeper to validate access using both:
+  - The Database session state
+  - The Physical Disk (`data/sessions/{user_id}.session`)
+- **UX Refactor:** Rewrote all denial responses to be clear, professional, and action-oriented.
+
+> **NOTE:** Despite these fixes, access inconsistencies persist and are actively blocking Phase 2 validation.
+
+---
+
+### 2.3 Librarian Expansion (Repository Updates)
+
+### Progress
+- Expanded `UserRepository` in `data/repository.py` to support session lifecycle management.
+
+### Bugs / Issues
+- **AttributeError:** `UserRepository` lacked the `update_session_string` method, causing `SessionManager` to crash during session uploads.
+
+### Fixes / Solutions
+- Implemented `update_session_string`.
+- Added an explicit `await self.session.commit()` to ensure session metadata is permanently written to the Vault.
+
+---
+
+### Status
+- **Current State:**  
+  Media reposting logic is implemented but **cannot be tested** due to Gatekeeper access deadlock.
+- **Primary Blocker:**  
+  `SessionGuardMiddleware` is preventing repost pair creation and inspection.
+- **Next Task:**  
+  Resolve Gatekeeper access logic and confirm path synchronization between:
+  - `SessionManager` session saving
+  - `SessionGuardMiddleware` disk + DB validation  
+  Once unblocked, proceed immediately to **live media repost testing**.
+
+
+## Phase 2: Sensory Evolution & The Immune System
+**Status: COMPLETED (STABILIZED)**
+
+### 2.4 The Path-Soul Crisis (Identity Resolution)
+**Progress:**
+- Refactored the bridge between the **Librarian** (DB) and the **Eyes** (Telethon) to solve the "Not a valid string" error.
+- Successfully implemented a **Session Resolver** in the Service layer to distinguish between file paths and Base64 strings.
+- Updated `repost_engine.py` to handle absolute pathing for `.session` files stored in `data/sessions/`.
+- **The Universal Matcher:** Updated the `_handle_new_message` reflex arc to check both `message.chat_id` and `chat.username`, ensuring reposts trigger regardless of how the channel is identified.
+
+**Bugs / Issues:**
+- **ValueError (Not a valid string):** Telethon choked because it tried to read a long Windows file path as a Base64 session string.
+- **Architectural Leak:** Attempted to put path-checking logic inside the **Provider**, violating **Rule 11** (Dumb Providers).
+- **The ID Mismatch:** The engine saw messages but didn't repost because it was looking for specific IDs while the stream provided usernames.
+
+**Fixes / Solutions:**
+- **Rule 11 Restoration:** Stripped all logic out of `telethon_client.py`. It is now a "Dumb Pipe" that just accepts whatever session data the Service gives it.
+- **The Service Resolver:** Created `_determine_session_type` in `RepostService` to decide if it should send a `StringSession` or a raw file path to the Eyes.
+
+### 2.5 Vault Sanitation & Locking (The Burn Notice)
+**Progress:**
+- Implemented the **"Burn Notice"** command: `/deleteall`.
+- Added `delete_all_user_pairs` to the `UserRepository` and `RepostService` to clear database clutter.
+- Added a **Safety Net** to the boot sequence (`recover_all_listeners`) using `try/except` to prevent a single "broken soul" from crashing the entire organism.
+
+**Bugs / Issues:**
+- **The Clutter Bug:** Users ended up with 6+ duplicate pairs for the same source, causing loop-exhaustion.
+- **Database Locked (OperationalError):** SQLite seized up because the Bot (SQLAlchemy) and Telethon (SQLite) tried to touch the same session file simultaneously.
+
+**Fixes / Solutions:**
+- **The Clean Slate:** Added `/deleteall` to wipe the user's ledger and allow a fresh start.
+- **The Resurrection Shield:** Wrapped the recovery loop so the bot ignores corrupt pairs and finishes booting.
+- **Lock Management:** Identified that "Database Locked" is caused by ghost `python.exe` processes; implemented connection reuse to minimize file-locking conflicts.
+
+---
+
+### Status
+- **Current State:** Phase 2 achieved. Media reposting is live, duplicates are purgeable, and Rule 11 architecture is restored.
+- **Milestone:** The bot can "see" a photo in a source and "blink" it to a destination without losing the path to its "soul."
+- **Next Task:** Phase 3 - Multi-User Stability & UX Polish.
+
+
+
+---
+
+## Phase 2: Sensory Evolution & The Immune System (Continuation)
+**Status: COMPLETED**
+
+### 2.6 The Global Gaze (Listener Optimization)
+**Progress:**
+- Refactored `TelethonProvider.start_listener` to use a **Global Gaze**. Instead of one listener per pair, it now runs **one listener per user session**.
+- Moved the "Filtering" logic from the Provider to the **Nervous System** (`RepostService`).
+- **Handshake Fix:** Aligned the argument signatures between the Service and the Provider to prevent `TypeError` during pair creation.
+
+**Bugs / Issues:**
+- **TypeError (Takes 4 but 5 given):** The Service was still trying to hand the `source_id` to the Provider after the Provider was upgraded to be "source-blind."
+- **Listener Exhaustion:** Running multiple listeners on the same session file was causing "Database Locked" errors and high CPU spikes.
+
+**Fixes / Solutions:**
+- **Signature Sync:** Removed `source_id` from the `start_listener` call in `repost_engine.py`.
+- **Architectural Shift:** The bot now opens its eyes once and checks the incoming message against the entire database ledger in one pass.
+
+### 2.7 Librarian Memory Recovery (The Missing Strand)
+**Progress:**
+- Updated `data/repository.py` with `get_all_active_users_with_pairs` to support the new global listener architecture.
+- Implemented a **Duplicate Guard** in the Librarian to prevent "Clutter Pairs" from entering the Vault.
+
+**Bugs / Issues:**
+- **CRITICAL - AttributeError:** The organism failed to boot because `UserRepository` lacked the method to fetch unique active users.
+- **The Clutter Bug (Revived):** Users were able to add the same Source -> Destination link multiple times, leading to duplicate reposts of the same message.
+
+**Fixes / Solutions:**
+- **DNA Insertion:** Added the missing `distinct()` query to the repository to return a clean list of user IDs for recovery.
+- **Integrity Check:** Added a `select` check in `add_repost_pair` to verify a link doesn't already exist before committing it to the Vault.
+
+---
+
+### Status
+- **Current State:** **MVP 2.0 ACHIEVED.** The bot is now architecturally perfect for multiple users and multiple pairs.
+- **Milestone:** Successfully handled the first "Global Blink" where one session manages multiple routing rules without conflict.
+- **Next Task:** Phase 3 - Multi-User Stability, UX Polish, and Command Throttling.
