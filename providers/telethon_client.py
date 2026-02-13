@@ -64,15 +64,24 @@ class TelethonProvider:
                 del self.active_clients[user_id]
 
     async def send_message(self, user_id: int, destination: str, message):
-        """The Eyes: Action (The Blink). Now accepts raw message objects."""
+        """The Eyes: Action. Now handles single messages OR albums."""
         client = self.active_clients.get(user_id)
-
         if not client or not client.is_connected():
-            logger.warning(f"No active client for {user_id}. The Eyes are closed!")
             return
 
         try:
-            await client.send_message(destination, message)
+            # If it's a list, it's an album!
+            if isinstance(message, list):
+                # Only the first message usually has the caption in an album
+                # We extract the media from all, and caption from the first
+                caption = next((m.text for m in message if m.text), "")
+                files = [m.media for m in message if m.media]
+                
+                await client.send_file(destination, files, caption=caption)
+            else:
+                # Standard single message
+                await client.send_message(destination, message)
+                
             logger.info(f"✅ Successful blink to {destination}")
         except Exception as e:
             logger.error(f"❌ Blink failed: {e}")
