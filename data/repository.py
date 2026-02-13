@@ -1,8 +1,7 @@
 """
 DATA: REPOSITORY
-The 'Librarian'. (Anatomy: Memory)
-Encapsulates all CRUD operations. No business logic allowed. (Rule 11)
-Fighting duplicates and ghost errors while the music plays.
+Handles all database operations for users and repost pairs.
+This layer is strictly for reading and writing to the Vault.
 """
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +17,7 @@ class UserRepository:
         return result.scalar_one_or_none()
 
     async def create_or_update_user(self, user_id: int, username: str | None = None) -> User:
-        """Ensures the user exists in the Vault. (Rule 1: Known State)"""
+        """Ensures the user exists in the database."""
         user = await self.get_user(user_id)
         if not user:
             user = User(id=user_id, username=username)
@@ -30,7 +29,7 @@ class UserRepository:
         return user
 
     async def update_session_string(self, user_id: int, session_string: str):
-        """Action: Writes the Session String (Soul) into the User record."""
+        """Updates the stored session string for a user."""
         user = await self.get_user(user_id)
         if user:
             user.session_string = session_string
@@ -40,9 +39,9 @@ class UserRepository:
 
     # --- REPOST PAIR METHODS ---
 
-    async def add_repost_pair(self, user_id: int, source: str, destination: str):
-        """Adds a new repost pair for the user. (With Duplicate Guard)"""
-        # <REACTION: Check if this exact pair already exists before adding more clutter.>
+    async def add_repost_pair(self, user_id: int, source: str, destination: str, filter_type: int = 1, replacement_link: str = None):
+        """Adds a new repost pair with duplicate protection and filter settings."""
+        # Check if this exact pair already exists to avoid duplicate messages
         existing = await self.session.execute(
             select(RepostPair).where(
                 RepostPair.user_id == user_id,
@@ -53,17 +52,19 @@ class UserRepository:
         if existing.scalar_one_or_none():
             return
 
+        # Added filter_type and replacement_link to the storage logic
         new_pair = RepostPair(
             user_id=user_id,
             source_id=source,
-            destination_id=destination
+            destination_id=destination,
+            filter_type=filter_type,
+            replacement_link=replacement_link
         )
         self.session.add(new_pair)
         await self.session.commit()
 
     async def delete_pair_by_id(self, user_id: int, pair_id: int) -> bool:
-        """The 'Selective Prune'. Deletes a specific pair if it belongs to the user."""
-        # <REACTION: First we check if it exists and belongs to the right person.>
+        """Deletes a specific pair after verifying ownership."""
         query = select(RepostPair).where(
             RepostPair.id == pair_id, 
             RepostPair.user_id == user_id
@@ -75,11 +76,10 @@ class UserRepository:
             await self.session.delete(pair)
             await self.session.commit()
             return True
-            
         return False
 
     async def delete_all_user_pairs(self, user_id: int) -> int:
-        """The 'Burn Notice'. Deletes all pairs for a user."""
+        """Removes all pairs for a specific user."""
         result = await self.session.execute(
             delete(RepostPair).where(RepostPair.user_id == user_id)
         )
@@ -87,30 +87,27 @@ class UserRepository:
         return result.rowcount 
 
     async def get_user_pairs(self, user_id: int):
-        """Fetches all repost pairs for a specific user."""
+        """Fetches all repost pairs for a user."""
         result = await self.session.execute(
             select(RepostPair).where(RepostPair.user_id == user_id)
         )
         return result.scalars().all()
 
     async def get_all_active_pairs(self):
-        """Fetches every active pair for Startup Recovery. (Rule 7)"""
+        """Fetches all active pairs across all users for system recovery."""
         result = await self.session.execute(
             select(RepostPair).where(RepostPair.is_active == True)
         )
         return result.scalars().all()
 
-    # --- THE MISSING DNA STRAND ---
     async def get_all_active_users_with_pairs(self):
-        """Fetches a unique list of user_ids who have at least one active repost pair."""
-        # <THINK: This fixes the CRITICAL boot error. The Nervous System needs this list!>
+        """Returns a list of unique user IDs who have active reposts running."""
         query = select(RepostPair.user_id).where(RepostPair.is_active == True).distinct()
         result = await self.session.execute(query)
         return [row[0] for row in result.all()]
 
     async def deactivate_pair(self, user_id: int, pair_id: int) -> bool:
-        """Marks a pair as inactive if it belongs to the user."""
-        # <REACTION: Ownership check is mandatory. Rule 1: Security by isolation.>
+        """Pauses a repost pair."""
         result = await self.session.execute(
             select(RepostPair).where(
                 RepostPair.id == pair_id, 
@@ -125,8 +122,7 @@ class UserRepository:
         return False
 
     async def activate_pair(self, user_id: int, pair_id: int) -> bool:
-        """Marks a pair as active if it belongs to the user."""
-        # <THINK: The light switch for the flow.>
+        """Resumes a repost pair."""
         result = await self.session.execute(
             select(RepostPair).where(
                 RepostPair.id == pair_id, 

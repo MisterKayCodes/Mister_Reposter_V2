@@ -1,46 +1,60 @@
 """
 CORE: REPOST LOGIC
-The 'Brain'. (Anatomy: Brain)
-Pure functions only. No I/O, no DB, no Telethon. (Rule 11)
+Pure functions for text processing. 
+Handles the actual cleaning, stripping, and replacing of text.
 """
+import re
 
-def clean_message_text(text: str, remove_links: bool = False) -> str:
-    """
-    Input: Raw text from source.
-    Output: Cleaned text for destination.
-    (Rule 5: Idempotency - Same input, same result)
-    """
-    if not text:
-        return ""
-    
-    # Placeholder for future logic: Link removal, ad filtering, etc.
-    cleaned_text = text.strip()
-    
-    return cleaned_text
+class MessageCleaner:
+    @staticmethod
+    def clean(text: str, mode: int, replacement: str = None) -> str:
+        """
+        Input: Raw text and filtering rules.
+        Output: Sanitized text based on user preference.
+        
+        Modes: 0 = As Is, 1 = Remove, 2 = Replace
+        """
+        if not text or mode == 0:
+            return text
 
-def should_repost(message_type: str, allowed_types: list) -> bool:
-    """
-    Determines if a message meets the criteria to be copied.
-    """
-    return message_type in allowed_types
+        # Regex patterns for Telegram links and usernames
+        # This catches: t.me/link, https://t.me/+, and @usernames
+        patterns = [
+            r'https?://t\.me/[\w\+/_]+', 
+            r't\.me/[\w\+/_]+',
+            r'@[\w_]+'
+        ]
 
+        cleaned_text = text
+        
+        for pattern in patterns:
+            if mode == 1:
+                # Mode 1: Delete the match entirely
+                cleaned_text = re.sub(pattern, '', cleaned_text)
+            elif mode == 2:
+                # Mode 2: Swap the match for the user's custom link
+                # If no replacement is provided, it defaults to an empty string
+                rep = replacement if replacement else ""
+                cleaned_text = re.sub(pattern, rep, cleaned_text)
+
+        # Cleanup: Remove double spaces and empty lines left behind by deletions
+        cleaned_text = re.sub(r' +', ' ', cleaned_text)
+        cleaned_text = re.sub(r'\n\s*\n', '\n', cleaned_text)
+        
+        return cleaned_text.strip()
 
 def sanitize_channel_id(input_string: str) -> str:
     """
-    The Sanitizer: Strips 'https://t.me/' or 't.me/' from links.
-    Example: 'https://t.me/my_channel' -> 'my_channel'
+    Strips 'https://t.me/' or '@' to get the raw username or ID.
     """
     if not input_string:
         return ""
         
     clean = input_string.strip()
-    
-    # List of "web skin" prefixes to peel off
     prefixes = ["https://t.me/+", "https://t.me/", "http://t.me/", "t.me/", "@"]
     
     for p in prefixes:
         if clean.startswith(p):
             clean = clean.replace(p, "")
     
-    # Remove trailing slashes (e.g., 'my_channel/' -> 'my_channel')
     return clean.rstrip("/")

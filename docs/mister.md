@@ -278,3 +278,71 @@
 - **Current State:** **MVP 2.0 ACHIEVED.** The bot is now architecturally perfect for multiple users and multiple pairs.
 - **Milestone:** Successfully handled the first "Global Blink" where one session manages multiple routing rules without conflict.
 - **Next Task:** Phase 3 - Multi-User Stability, UX Polish, and Command Throttling.
+
+
+## Phase 3: The Synchronized Organism & Media Mastery
+**Status: IN PROGRESS**
+
+### 3.1 The Synchronized Handshake (State Management)
+**Progress:**
+- Refactored the **Nervous System** (`RepostService`) to ensure the **Vault** (DB) and the **Eyes** (Telethon) are always in sync.
+- Implemented the **Status Guard**: The reflex arc now explicitly checks `is_active` before any blink occurs, preventing "ghost reposting."
+- Integrated the **"Wake Up" Handshake**: The `/stoppair` and `/startpair` commands now physically trigger the listener's lifecycle, ensuring the bot doesn't stay dormant when it should be watching.
+
+**Bugs / Issues:**
+- **The Ghost Signal:** Even when a pair was "stopped" in the DB, the background listener was still firing because it wasn't checking the latest state.
+- **The Dormant Eye:** Activating a pair didn't always wake up the listener if it was the user's first active pair after a period of total inactivity.
+
+**Fixes / Solutions:**
+- Added a `if not p.is_active: continue` check inside the message handler loop.
+- Updated `activate_pair` in the Service layer to force-call `start_listener`, ensuring the background task is alive the moment the switch is flipped.
+
+### 3.2 The Album Buffer (Media Group Mastery)
+**Progress:**
+- Successfully implemented an **Asynchronous Waiting Room** for media groups.
+- Upgraded the **Eyes** (Telethon Provider) to support `send_file` for albums, allowing the bot to bundle photos and videos into a single post.
+- **Smart Captioning:** The bot now extracts the caption from the first message of an album to prevent "Triple-Caption Spam."
+
+**Bugs / Issues:**
+- **The Stuttering Repost:** Sending an album of 3 photos resulted in 3 separate messages with duplicate captions.
+- **Database Locked (MTProtoSender):** Rapid-fire messages from an album caused Telethon to attempt multiple simultaneous writes to the `.session` file.
+- **Task Destruction:** Closing a listener roughly caused `Task was destroyed but it is pending!` errors.
+
+**Fixes / Solutions:**
+- **The 1-Second Heartbeat:** Implemented `asyncio.sleep(1.0)` in a dedicated `_process_album_after_delay` task. This buffers incoming `grouped_id` messages before executing a single blink.
+- **Graceful Sleep:** Added a `0.2s` cooldown and an explicit `await client.disconnect()` in the Provider to let Telethon finish its "paperwork" before the session closes.
+- **The Tray Logic:** Shifted the Provider logic to detect if it's being handed a `list` (Album) or a single object, and choose the correct Telethon method accordingly.
+
+---
+
+### Status
+- **Current State:** **Media Group Support ACHIEVED.** The bot now handles albums with professional precision.
+- **Milestone:** The transition from "Physical Connection" (1 listener per pair) to "Logic-Based Routing" (1 listener per user) is now 100% stable.
+- **Next Task:** Phase 3.3 - Content Filters (Link Removal & Caption Cleaning).
+
+
+
+### 3.3 Content Filters & Schema Evolution (The Alembic Era)
+**Progress:**
+- **Dynamic Schema Management:** Integrated **Alembic** for database migrations. We no longer need to delete the "Vault" to add new features; the bot now performs "Live Surgery" on its own tables.
+- **Filtering Anatomy:** Added `filter_type` and `replacement_link` columns to the `repost_pairs` table, allowing users to choose how the bot handles external links.
+- **Nervous System Integration:** Successfully updated the **Repost Engine** (`repost_engine.py`) to call the `MessageCleaner` before every blink.
+- **The "Type-Aware" Eye Fix:** Refined the **Telethon Provider** to handle mixed content types (Text-only vs. Media-Albums) within the same logic path.
+
+**Bugs / Issues:**
+- **The "No Such Column" Tantrum:** Adding new fields to the Python Model caused the bot to crash because the physical `.db` file was outdated.
+- **Empty Box Syndrome:** Sending a text message with a link caused `Blink failed: Cannot use [] as file` because the bot was looking for media that didn't exist in the "box."
+- **TLObject Mismatch:** Telethon threw errors when receiving raw strings for destinations instead of resolved "Peers" (IDs or Usernames).
+
+**Fixes / Solutions:**
+- **Alembic Alignment:** Synced the `alembic.ini` path with `config.py` to ensure migrations happen in the `/data` folder. Used `alembic upgrade head` to finalize the schema.
+- **The Filter Call:** Inside `_execute_repost`, we now loop through all messages in a bundle and overwrite `msg.message` with the output of `MessageCleaner.clean(msg.message, p.filter_type, p.replacement_link)`.
+- **The Media-Check Guard:** Updated `send_message` in the Provider to check `if files:`. If empty, it falls back to a text-based `send_message` rather than a file-based one.
+- **Target Digit-Check:** Implemented a check to convert numeric strings to `int` before passing them to Telethon, ensuring the "Eyes" focus on the correct destination.
+
+---
+
+### Status
+- **Current State:** **Content Filtering Architecture BUILT & INTEGRATED.** The bot now "cleans" messages automatically based on user-defined rules.
+- **Milestone:** Successfully transitioned the project to a **Version-Controlled Database** state and established a stable processing pipeline for albums and text.
+- **Next Task:** Phase 3.4 - Stability & Error Handling (Addressing the "Signal Ghost" timeouts and adding retry logic).

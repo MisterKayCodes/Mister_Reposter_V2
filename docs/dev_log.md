@@ -666,3 +666,199 @@ I finally played music after that.
 
 Not because I needed motivation —  
 but because the system was quiet enough to let it in.
+
+
+
+## The Alembic Era — When the Vault Learned to Change Without Dying
+
+This part happened without drama at first.
+
+Future was playing.  
+Then Drake.  
+Now Blaqbonez going at Odumodublvck — sharp, funny, unapologetic.
+
+That kind of energy.
+
+I was deep in the code when it hit me:  
+I was tired of deleting the database every time I wanted to evolve the system.
+
+That’s not building.  
+That’s resetting.
+
+So I stopped doing surgery with a hammer and brought in Alembic.
+
+---
+
+### Live Surgery — When the Vault Stopped Being Fragile
+
+Integrating Alembic felt like crossing a line.
+
+Before this, any schema change meant wiping memory.  
+Users gone.  
+Pairs gone.  
+History erased.
+
+Now the Vault could change shape while staying alive.
+
+I added new columns to `repost_pairs`:
+
+- `filter_type`
+- `replacement_link`
+
+Not features yet — just *possibility*.
+
+The idea was simple:  
+Let users decide how links should be treated instead of hardcoding morality into the bot.
+
+This wasn’t just a feature add.  
+It was trust in the system’s future.
+
+---
+
+### The Tantrum — When Reality Checked the Code
+
+Of course, the first run exploded.
+
+“No such column.”
+
+Classic.
+
+I had updated the Python models, but the physical database was still living in the past.
+
+That’s when Alembic proved its worth.
+
+I aligned the paths properly — no more guessing where the database lived.  
+Ran the migration.  
+Watched the tables update without losing a single row.
+
+That moment felt adult.
+
+Version-controlled memory changes everything.
+
+---
+
+### Cleaning Before Blinking — Teaching the System Manners
+
+Once the schema existed, the Nervous System needed discipline.
+
+Every message now passes through the MessageCleaner before it ever gets sent.
+
+Not sometimes.  
+Not optionally.
+
+Always.
+
+Inside the repost execution, I loop through every message in a bundle and overwrite the text with the cleaned version based on the user’s rule.
+
+No shortcuts.  
+No “just this once.”
+
+That’s when I realized:  
+filters aren’t censorship — they’re intent.
+
+---
+
+### The Empty Box Bug — When Text Pretended to Be Media
+
+This one annoyed me.
+
+A simple text message with a link caused a failure that made no sense at first.
+
+“Cannot use [] as file.”
+
+The bot was trying to send *nothing* as *something*.
+
+Because in its head, every repost was still treated like media.
+
+I added the guard.
+
+If there are files, send files.  
+If not, fall back to text.
+
+It sounds obvious now.
+
+It wasn’t at 2 a.m.
+
+---
+
+### The Eyes Needed Glasses — Destination Confusion
+
+Another subtle one.
+
+Telethon doesn’t like guessing.
+
+Passing raw numeric strings made it uncomfortable.  
+It wanted peers — real targets.
+
+So I taught the system to recognize numbers for what they are.
+
+If it looks like an ID, convert it.  
+If not, treat it as a username.
+
+No more mismatches.  
+No more staring at the wrong place.
+
+---
+
+### Outside the Code — Life Still Happening
+
+At some point, the power flickered.
+
+I paused.  
+Listened.
+
+Still on.
+
+Good.
+
+I’ll need fuel later.  
+Need to cook something real.  
+Beans again, probably.
+
+My friend texted — we’re prank calling people tomorrow. Valentine’s Day.  
+Two single guys doing unserious things seriously.
+
+Snapchat notifications came in.  
+I opened it.  
+Closed it.  
+I love and hate that app equally.
+
+But the code stayed open.
+
+---
+
+### What Changed for Me
+
+Debugging stopped feeling like punishment.
+
+It started feeling like memory formation.
+
+Every fix etched itself into my head because I understood *why* it failed — not just how to silence it.
+
+That’s when it clicked:
+
+You don’t forget systems you’ve repaired under pressure.
+
+---
+
+### Status Check
+
+The content filtering architecture exists now.
+
+The database can evolve without amnesia.  
+Albums and text share one clean pipeline.  
+The Eyes know what they’re looking at.
+
+Next up is stability — not new features.
+
+Signal ghosts.  
+Timeouts.  
+Retries.
+
+But tonight, this was enough.
+
+I shut the laptop knowing something important:
+
+This system can grow now.
+
+And so can I.

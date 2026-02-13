@@ -64,23 +64,31 @@ class TelethonProvider:
                 del self.active_clients[user_id]
 
     async def send_message(self, user_id: int, destination: str, message):
-        """The Eyes: Action. Now handles single messages OR albums."""
+        """The Eyes: Action. Final refined version for TLObject safety."""
         client = self.active_clients.get(user_id)
         if not client or not client.is_connected():
             return
 
         try:
-            # If it's a list, it's an album!
-            if isinstance(message, list):
-                # Only the first message usually has the caption in an album
-                # We extract the media from all, and caption from the first
-                caption = next((m.text for m in message if m.text), "")
-                files = [m.media for m in message if m.media]
-                
-                await client.send_file(destination, files, caption=caption)
+            # Determine if we are sending to an ID or a Username
+            # (Telethon likes integers for IDs)
+            if destination.replace('-', '').isdigit():
+                target = int(destination)
             else:
-                # Standard single message
-                await client.send_message(destination, message)
+                target = destination
+
+            if isinstance(message, list):
+                files = [m.media for m in message if m.media]
+                text = next((m.text for m in message if m.text), "")
+                
+                if files:
+                    await client.send_file(target, files, caption=text)
+                else:
+                    # Explicitly use the 'message' argument name to avoid TLObject confusion
+                    await client.send_message(target, message=text)
+            else:
+                # If it's already a Telethon Message object, we can forward or re-send it
+                await client.send_message(target, message)
                 
             logger.info(f"✅ Successful blink to {destination}")
         except Exception as e:
