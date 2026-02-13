@@ -61,6 +61,23 @@ class UserRepository:
         self.session.add(new_pair)
         await self.session.commit()
 
+    async def delete_pair_by_id(self, user_id: int, pair_id: int) -> bool:
+        """The 'Selective Prune'. Deletes a specific pair if it belongs to the user."""
+        # <REACTION: First we check if it exists and belongs to the right person.>
+        query = select(RepostPair).where(
+            RepostPair.id == pair_id, 
+            RepostPair.user_id == user_id
+        )
+        result = await self.session.execute(query)
+        pair = result.scalar_one_or_none()
+
+        if pair:
+            await self.session.delete(pair)
+            await self.session.commit()
+            return True
+            
+        return False
+
     async def delete_all_user_pairs(self, user_id: int) -> int:
         """The 'Burn Notice'. Deletes all pairs for a user."""
         result = await self.session.execute(
@@ -91,13 +108,34 @@ class UserRepository:
         result = await self.session.execute(query)
         return [row[0] for row in result.all()]
 
-    async def deactivate_pair(self, pair_id: int):
-        """Marks a pair as inactive in the Vault."""
+    async def deactivate_pair(self, user_id: int, pair_id: int) -> bool:
+        """Marks a pair as inactive if it belongs to the user."""
+        # <REACTION: Ownership check is mandatory. Rule 1: Security by isolation.>
         result = await self.session.execute(
-            select(RepostPair).where(RepostPair.id == pair_id)
+            select(RepostPair).where(
+                RepostPair.id == pair_id, 
+                RepostPair.user_id == user_id
+            )
         )
         pair = result.scalar_one_or_none()
         if pair:
             pair.is_active = False
             await self.session.commit()
-        return pair
+            return True
+        return False
+
+    async def activate_pair(self, user_id: int, pair_id: int) -> bool:
+        """Marks a pair as active if it belongs to the user."""
+        # <THINK: The light switch for the flow.>
+        result = await self.session.execute(
+            select(RepostPair).where(
+                RepostPair.id == pair_id, 
+                RepostPair.user_id == user_id
+            )
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.is_active = True
+            await self.session.commit()
+            return True
+        return False

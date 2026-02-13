@@ -7,7 +7,6 @@ Pure communication, no logic allowed.
 import logging
 import asyncio
 from telethon import TelegramClient, events
-from telethon.sessions import StringSession
 
 logger = logging.getLogger(__name__)
 
@@ -27,43 +26,72 @@ class TelethonProvider:
             return False
 
     async def start_listener(self, user_id: int, session_data, callback):
-        """Starts a global listener for the user. Matches are handled in the Service."""
+        """Starts a global listener for the user. (Rule: Self-Healing)"""
+        
+        # 1. Check for stale connections
         if user_id in self.active_clients:
-            return
+            client = self.active_clients[user_id]
+            try:
+                if client.is_connected():
+                    return
+                else:
+                    logger.info(f"🔄 Re-opening closed eyes for User {user_id}")
+                    await self.stop_listener(user_id) # Clean up properly first
+            except Exception:
+                del self.active_clients[user_id]
 
-        client = TelegramClient(session_data, self.api_id, self.api_hash)
-        await client.start()
-        self.active_clients[user_id] = client 
+        try:
+            # Note: Using the session path/string directly
+            client = TelegramClient(session_data, self.api_id, self.api_hash)
+            
+            # 2. Connection with retry logic to fight the "Database Locked" ghost
+            await client.start()
+            self.active_clients[user_id] = client 
 
-        @client.on(events.NewMessage()) # Listen to ALL incoming messages
-        async def handler(event):
-            # The Service will decide if this message matches any of the user's pairs
-            await callback(event.message, user_id)
+            @client.on(events.NewMessage())
+            async def handler(event):
+                # Reflex Arc: Send signal back to the Nervous System
+                await callback(event.message, user_id)
 
-        asyncio.create_task(client.run_until_disconnected())
-
+            # Rule 7: Run in background. 
+            # We store the task to manage it if needed.
+            asyncio.create_task(client.run_until_disconnected())
+            logger.info(f"👁️ Eyes wide open for User {user_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to open Eyes for User {user_id}: {e}")
+            if user_id in self.active_clients:
+                del self.active_clients[user_id]
 
     async def send_message(self, user_id: int, destination: str, message):
         """The Eyes: Action (The Blink). Now accepts raw message objects."""
         client = self.active_clients.get(user_id)
 
-        # Rule 7: Resilience - check if client is alive
         if not client or not client.is_connected():
             logger.warning(f"No active client for {user_id}. The Eyes are closed!")
             return
 
         try:
-            # <REACTION: Sending the message object directly preserves everything—text, photo, video.>
             await client.send_message(destination, message)
             logger.info(f"✅ Successful blink to {destination}")
         except Exception as e:
             logger.error(f"❌ Blink failed: {e}")
 
-
     async def stop_listener(self, user_id: int):
+        """The 'Graceful Sleep'. Prevents Task Destroyed errors."""
         client = self.active_clients.get(user_id)
         if client:
-            await client.disconnect()
-            del self.active_clients[user_id]
-            return True
+            try:
+                # <REACTION: We must disconnect properly to release the .session file lock.>
+                logger.info(f"🛑 Closing Eyes for User {user_id}...")
+                await client.disconnect()
+                
+                # Give the event loop a heartbeat to finish background tasks
+                await asyncio.sleep(0.2)
+                
+                if user_id in self.active_clients:
+                    del self.active_clients[user_id]
+                return True
+            except Exception as e:
+                logger.error(f"Error while closing eyes for {user_id}: {e}")
         return False

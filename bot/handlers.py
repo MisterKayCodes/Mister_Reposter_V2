@@ -35,6 +35,9 @@ async def cmd_start(message: types.Message):
         "1. Use /uploadsession to link your Telegram account.\n"
         "2. Use /createpair to link your channels.\n"
         "3. Use /viewpairs to check status."
+        "/stoppair <id> - Pause a specific link\n"
+        "/deletepair <id> - Permanently delete one link\n"
+        "/deleteall - Full Vault wipe (Nuclear option)\n\n"
     )
 
 # --- SESSION UPLOAD FLOW ---
@@ -140,20 +143,55 @@ async def cmd_view_pairs(message: types.Message):
 
 @router.message(Command("stoppair"))
 async def cmd_stop_pair(message: types.Message):
-    """Usage: /stoppair <pair_id>"""
-    # <THINK: Taking a pair out of commission.>
+    """Action: Pause the flow."""
     args = message.text.split()
     if len(args) < 2 or not args[1].isdigit():
-        await message.answer("Usage: `/stoppair <id>` (Get ID from /viewpairs)")
+        await message.answer("❌ Usage: `/stoppair <id>`")
         return
 
     pair_id = int(args[1])
-    success = await repost_service.stop_repost_pair(message.from_user.id, pair_id)
+    # This now only updates the DB status
+    success = await repost_service.deactivate_pair(message.from_user.id, pair_id)
     
     if success:
-        await message.answer(f"✅ Pair #{pair_id} stopped.")
+        await message.answer(f"🔴 Pair #{pair_id} stopped. It will no longer repost.")
     else:
-        await message.answer(f"⚠️ Could not stop Pair #{pair_id}. Is the ID correct?")
+        await message.answer(f"⚠️ Could not find Pair #{pair_id}.")
+
+@router.message(Command("startpair"))
+async def cmd_start_pair(message: types.Message):
+    """Action: Resume the flow."""
+    args = message.text.split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer("❌ Usage: `/startpair <id>`")
+        return
+
+    pair_id = int(args[1])
+    success = await repost_service.activate_pair(message.from_user.id, pair_id)
+    
+    if success:
+        await message.answer(f"🟢 Pair #{pair_id} is now active again.")
+    else:
+        await message.answer(f"⚠️ Could not find Pair #{pair_id}.")
+
+@router.message(Command("deletepair"))
+async def cmd_delete_single_pair(message: types.Message):
+    """Usage: /deletepair <pair_id>"""
+    # <REACTION: Just pruning a single branch, not cutting the whole tree.>
+    args = message.text.split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer("Usage: `/deletepair <id>` (Get ID from /viewpairs)")
+        return
+
+    pair_id = int(args[1])
+    
+    # add this method to your RepostService
+    success = await repost_service.delete_single_pair(message.from_user.id, pair_id)
+    
+    if success:
+        await message.answer(f"🗑️ Pair #{pair_id} has been deleted from the Vault.")
+    else:
+        await message.answer(f"⚠️ Could not delete Pair #{pair_id}. Check the ID.")
 
 
 @router.message(Command("deleteall"))
