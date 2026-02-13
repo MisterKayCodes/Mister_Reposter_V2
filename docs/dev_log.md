@@ -497,3 +497,172 @@ It was about responsibility.
 
 And that’s when I stopped feeling like someone writing code  
 and started feeling like someone **maintaining a system**.
+
+
+
+
+## Morning Fixes — When Photos Stopped Acting Like Strangers
+
+7:54 a.m.
+
+No music yet.  
+Too early for motivation, too late to pretend I’m not thinking.
+
+Valentine’s Day is tomorrow.  
+No date.  
+Just me, my laptop, and the neighbor’s radio bleeding through the wall.
+
+I scrolled past a bit of iShowSpeed on my phone while the kettle boiled. Loud energy. Not mine. I closed it and opened the code instead.
+
+That’s when I noticed something that had been bothering me quietly.
+
+Albums.
+
+---
+
+### The Album Problem — When Family Photos Arrived Alone
+
+Before today, the bot treated every photo like it was meeting it for the first time.
+
+Three photos.  
+Same album.  
+Same caption.
+
+Three separate reposts.
+
+It wasn’t broken — it was worse.  
+It was *technically correct and socially wrong*.
+
+I leaned back and thought about it like a human instead of a system.
+
+Albums aren’t messages.  
+They’re moments.
+
+And moments arrive in pieces.
+
+---
+
+### The Waiting Room — Teaching the Bot to Pause
+
+I added a waiting room.
+
+An `album_cache`.
+
+Any message with a `grouped_id` doesn’t get sent immediately anymore.  
+It gets held.
+
+Not ignored.  
+Not forgotten.
+
+Just… waited on.
+
+That alone felt like progress.
+
+---
+
+### The One-Second Heartbeat — Learning When to Act
+
+Here’s the trick that made it work:
+
+The moment the first photo of an album arrives, the system starts a one-second timer.
+
+Not because one second is magic —  
+but because humans don’t send albums instantaneously.
+
+During that second, the bot listens.  
+Collects.  
+Stays still.
+
+By the time the timer ends, the album has arrived as a whole.
+
+That pause changed everything.
+
+---
+
+### The Tray — Sending Albums Like Albums
+
+When the timer expires, the Nervous System doesn’t send messages anymore.
+
+It sends a tray.
+
+A list.
+
+One clean bundle passed to the Eyes.
+
+No spam.
+No duplication.
+No awkward silence between photos.
+
+Just one album, landing where it should.
+
+That was the moment the bot stopped being a copier  
+and started being a curator.
+
+---
+
+### Captions — Finding the One That Matters
+
+Albums have another quiet truth:
+
+Only one photo usually speaks.
+
+Before, every photo screamed the same caption.
+
+Now, the Eyes scan the bundle.
+They find the one message that actually has text.
+That caption becomes the voice of the whole album.
+
+No repetition.
+No noise.
+
+It looks intentional now.
+
+---
+
+### Graceful Weight — Not Dropping the Stack
+
+Sending albums is heavier than sending text.
+
+More files.
+More pressure.
+More chances to mess up shutdowns.
+
+Those old “database is locked” ghosts were waiting.
+
+So I slowed the system down — just a little.
+
+A heartbeat delay during disconnect.
+Time for Telethon to finish its paperwork.
+Time for the session files to breathe.
+
+No slammed doors.
+No corrupted state.
+
+Just a clean exit.
+
+---
+
+### Neighbor, Morning, Reality
+
+My neighbor knocked around then — asking if I had power.  
+I said yes.  
+Didn’t explain that I was already running on low battery anyway.
+
+The kettle clicked off.
+Beans from last night sat on the table.
+Valentine’s still had no plans.
+
+But the bot was different now.
+
+It understood something human:
+
+That related things should travel together.
+
+That waiting a second can prevent a mess.
+
+And that not everything needs to be rushed just because it arrived.
+
+I finally played music after that.
+
+Not because I needed motivation —  
+but because the system was quiet enough to let it in.
