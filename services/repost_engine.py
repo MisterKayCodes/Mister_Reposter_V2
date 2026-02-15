@@ -145,10 +145,12 @@ class RepostService:
     ):
         async with async_session() as db_session:
             repo = UserRepository(db_session)
-            await repo.add_repost_pair(
+            # Rule 11: Capture the new pair object to get its ID
+            new_pair = await repo.add_repost_pair(
                 user_id, source, destination, filter_type,
                 replacement_link, schedule_interval, start_from_msg_id
             )
+            
             user = await repo.get_user(user_id)
             session_path = self._get_session_path(user_id, user)
             
@@ -161,27 +163,54 @@ class RepostService:
             await self.telethon.start_listener(user_id, session_path, self._handle_new_message)
             self._active_listeners.add(user_id)
 
-        # Rule 7: Backfill as a background task
+        # Rule 7: Pass all required arguments to the backfill task
         if start_from_msg_id and schedule_interval and schedule_interval > 0:
             asyncio.create_task(
-                self._backfill_from_message(user_id, source, destination, start_from_msg_id, filter_type, replacement_link)
+                self._backfill_from_message(
+                    user_id, source, destination, start_from_msg_id, 
+                    filter_type, replacement_link, schedule_interval, new_pair.id
+                )
             )
+            
 
-    async def _backfill_from_message(self, user_id, source, destination, from_msg_id, filter_type, replacement_link):
-        await asyncio.sleep(2)
-        messages = await self.telethon.fetch_messages_from(user_id, source, from_msg_id)
-        if not messages:
-            return
+    async def _backfill_from_message(self, user_id, source, destination, from_msg_id, filter_type, replacement_link, interval_minutes, pair_id):
+        """Rule 11: Optimized for scheduled progression (msg 19 -> 20 -> 21)."""
+        await asyncio.sleep(5) # Brief pause to let system stabilize
+        
+        current_id = from_msg_id
+        
+        while True:
+            # Rule 6: Fetch only ONE message to ensure we don't skip logic
+            messages = await self.telethon.fetch_messages_from(user_id, source, current_id, limit=1)
+            
+            if not messages:
+                logger.info(f"Backfill for Pair #{pair_id} reached the 'present'. Switching to live listening.")
+                break
 
-        for msg in messages:
+            msg = messages[0]
             if msg.message:
                 msg.message = MessageCleaner.clean(msg.message, mode=filter_type, replacement=replacement_link)
-            # result is now a dict from the updated Telethon client
-            result = await self._send_with_retry(user_id, destination, msg)
-            if not result["ok"]:
-                logger.error(f"Backfill error: {result.get('error')}")
-            await asyncio.sleep(1.2) # Avoid flood during backfill
 
+            # Send the message
+            result = await self._send_with_retry(user_id, destination, msg, pair_id=pair_id)
+            
+            if result["ok"]:
+                # --- THE CRITICAL UPDATE ---
+                # Move the pointer forward in the Vault
+                current_id += 1 
+                async with async_session() as db_session:
+                    repo = UserRepository(db_session)
+                    await repo.update_pair_start_id(pair_id, current_id)
+                
+                # Rule 4.2: Respect the user's 5-minute schedule
+                logger.info(f"Pair #{pair_id} posted msg {current_id-1}. Waiting {interval_minutes}m for next.")
+                await asyncio.sleep(interval_minutes * 60)
+            else:
+                # If we hit a flood wait or error, stop the loop to prevent bot-wide lockout
+                logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to error.")
+                break
+
+        
     def _compute_dedup_key(self, message) -> str | None:
         parts = []
         msg_id = getattr(message, "id", None)

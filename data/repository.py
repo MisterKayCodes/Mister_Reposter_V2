@@ -30,6 +30,7 @@ class UserRepository:
         user = await self.get_user(user_id)
         if user:
             user.session_string = session_string
+            user.has_active_session = True
             await self.session.commit()
             return True
         return False
@@ -47,8 +48,9 @@ class UserRepository:
                 RepostPair.destination_id == destination
             )
         )
-        if existing.scalar_one_or_none():
-            return
+        found = existing.scalar_one_or_none()
+        if found:
+            return found
 
         new_pair = RepostPair(
             user_id=user_id,
@@ -63,6 +65,20 @@ class UserRepository:
         )
         self.session.add(new_pair)
         await self.session.commit()
+        await self.session.refresh(new_pair)
+        return new_pair
+
+    async def update_pair_start_id(self, pair_id: int, new_msg_id: int):
+        """Rule 11: Moves the pointer forward for scheduled backfills."""
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.start_from_msg_id = new_msg_id
+            await self.session.commit()
+            return True
+        return False
 
     async def delete_pair_by_id(self, user_id: int, pair_id: int) -> bool:
         query = select(RepostPair).where(
@@ -97,10 +113,10 @@ class UserRepository:
         return result.scalars().all()
 
     async def get_all_active_users_with_pairs(self):
-        # Rule 11: Optimized distinct query
+        # Optimized for performance
         query = select(RepostPair.user_id).where(RepostPair.is_active == True).distinct()
         result = await self.session.execute(query)
-        return [row[0] for row in result.all()]
+        return result.scalars().all()
 
     async def deactivate_pair(self, user_id: int, pair_id: int) -> bool:
         result = await self.session.execute(
@@ -146,7 +162,6 @@ class UserRepository:
         return False
 
     async def increment_error_count(self, pair_id: int) -> int:
-        # Rule 7: Atomic increment is safer and faster
         result = await self.session.execute(
             select(RepostPair).where(RepostPair.id == pair_id)
         )
@@ -155,7 +170,6 @@ class UserRepository:
             pair.error_count = (pair.error_count or 0) + 1
             current_count = pair.error_count
             await self.session.commit()
-            # Ensure the object is refreshed with the commit result
             return current_count
         return 0
 
@@ -166,7 +180,6 @@ class UserRepository:
         pair = result.scalar_one_or_none()
         if pair:
             pair.error_count = 0
-            # If it was an error status, bring it back to active
             if pair.status == "error":
                 pair.status = "active"
             await self.session.commit()

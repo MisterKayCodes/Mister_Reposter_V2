@@ -119,14 +119,20 @@ class TelethonProvider:
             return []
 
     async def send_message(self, user_id: int, destination: str | int, message: any) -> dict:
-        """Sends or forwards a message. Returns a standardized dict for the Engine."""
         client = self.active_clients.get(user_id)
         if not client or not client.is_connected():
             return {"ok": False, "error": "disconnected"}
 
         try:
             target = int(destination) if str(destination).replace("-", "").isdigit() else destination
-            sent = await client.send_message(target, message)
+            
+            # Mister, if the engine sends a list of messages (an album), 
+            # we use send_file with the list of media.
+            if isinstance(message, list):
+                sent = await client.send_file(target, [m.media for m in message if m.media], caption=message[0].message)
+            else:
+                sent = await client.send_message(target, message)
+                
             return {"ok": True, "message": sent}
         except FloodWaitError as e:
             return {"ok": False, "error": "flood_wait", "wait_seconds": e.seconds}
@@ -134,6 +140,8 @@ class TelethonProvider:
             logger.error(f"Telethon send error: {e}")
             return {"ok": False, "error": "exception", "detail": str(e)}
 
+    
+    
     async def stop_listener(self, user_id: int):
         client = self.active_clients.pop(user_id, None)
         if client:

@@ -647,3 +647,24 @@
 - **Current State:** **Phase 4.2 FULLY INTEGRATED.**
 - **Milestone:** The bridge between the user's intent (UI) and the engine's execution (Vault/Nervous System) is now bulletproof.
 
+
+### 4.2.8 Evolutionary Logic & "The Brain" Refinement
+**Progress:**
+- Optimized `MessageCleaner` using pre-compiled regex patterns to surgically remove `t.me` and `@username` links without disrupting text flow.
+- Implemented "Final Polish" logic (Rule 14) to eliminate double spaces and excessive newlines, ensuring professional output word-to-word.
+- Added `sanitize_channel_id` with prefix-slicing to ensure destination identifiers are stored in the Vault with 100% precision.
+- Hardened the `RepostEngine` backfill logic to use the `update_pair_start_id` save-point, making the scheduling queue immune to restarts.
+
+### 4.2.9 Eyes & Ears Idempotency
+**Progress:**
+- Upgraded `TelethonProvider` with an idempotency check in `start_listener`, preventing redundant connection attempts for existing sessions.
+- Refined the `join_channel` logic to handle both public usernames and private invite hashes through `CheckChatInviteRequest` fallback.
+- Enhanced `fetch_messages_from` with chronological reversal, ensuring the 19 -> 20 message progression flows exactly as the user expects.
+- Standardized the "Common Tongue" across all provider methods to ensure the Nervous System receives predictable result dictionaries.
+
+---
+
+### Status
+- **Current State:** **Phase 4.2 ARCHITECTURALLY SEALED.**
+- **Milestone:** The data-cleaning "Brain," the connection "Eyes," and the database "Vault" are now a single, synchronized organism.
+- **Next Task:** Phase 5 - Advanced Media Group (Album) handling and Stress-testing the multi-user scaling.
