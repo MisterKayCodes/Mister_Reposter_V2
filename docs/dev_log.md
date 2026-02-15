@@ -1753,3 +1753,203 @@ The organism is no longer trying to survive.
 It’s preparing to grow.
 
 Phase 5 begins soon.
+
+---
+
+## Phase 4.2.7 — Final Integration & Synchronization (Live)
+
+I’m inside `pair_handlers.py`.
+
+It’s messy.
+
+Not broken. Just scattered.  
+Creation flow here. Toggle somewhere else. Delete logic split in two files.
+
+I don’t like that.
+
+So I pull everything into one place.
+
+Five steps. Clean. Linear.
+
+Source.  
+Destination.  
+Filter.  
+Schedule.  
+Preview.
+
+Then toggle logic right below it.  
+Then 2-step deletion.
+
+No jumping across files.  
+No mental context switching.
+
+It feels tighter already.
+
+---
+
+Now I open `states.py`.
+
+I read every state name slowly.
+
+`waiting_for_source`  
+`waiting_for_destination`  
+`waiting_for_filter`  
+`waiting_for_schedule`  
+`waiting_for_confirmation`
+
+Then I flip back to the handlers.
+
+Word by word.
+
+Do they match?
+
+They have to match.
+
+No creative naming.
+No “almost the same”.
+
+Exact.
+
+I catch one subtle mismatch.
+Fix it.
+
+That tiny correction probably prevents a ghost transition three weeks from now.
+
+Small win.
+Massive future impact.
+
+---
+
+Switch to `utils.py`.
+
+Render functions.
+
+HTML mode enabled.
+
+I trigger a pair view manually.
+
+`🟢 Active`  
+`🟡 Paused`  
+`🔴 Error`
+
+They render clean.
+
+No raw tags.
+No broken formatting.
+
+Good.
+
+Now I simulate a weird case.
+
+What if an old database row doesn’t have `status`?
+What if `error_count` is `None`?
+
+That’s when systems break quietly.
+
+So I add fallback logic.
+
+If no status → assume `active`.  
+If no error_count → treat as `0`.
+
+Legacy entries won’t crash the UI now.
+
+Backward compatibility without migration drama.
+
+That feels responsible.
+
+---
+
+Back to the deletion flow.
+
+First tap → “Are you sure?”  
+Second tap → delete.
+
+I test double-click spam.
+
+Nothing breaks.
+
+Good.
+
+Toggle ON → OFF → ON quickly.
+
+No duplicate listeners.
+No weird state flip.
+
+The Nervous System responds instantly.
+
+---
+
+Now I step through the full flow like a user.
+
+Tap Create Pair.
+
+Source link.  
+Destination username.  
+Filter mode.  
+Schedule interval.  
+Start-from message.
+
+Preview screen appears.
+
+Everything listed clearly.
+
+Confirm.
+
+Pair created.
+
+Back to menu.
+
+Status badge shows immediately.
+
+No lag.
+No mismatch.
+
+The UI says exactly what the Engine knows.
+
+That’s the moment.
+
+That’s synchronization.
+
+---
+
+I sit back for a second.
+
+There’s no fireworks.
+
+Just alignment.
+
+The UI isn’t guessing anymore.  
+The FSM isn’t drifting anymore.  
+The Engine isn’t interpreting loosely anymore.
+
+Every layer agrees.
+
+User intent → handler → state → repository → engine → provider.
+
+Straight line.
+
+No friction.
+
+---
+
+This isn’t a feature.
+
+It’s coherence.
+
+And coherence feels different.
+
+Calmer.
+
+Cleaner.
+
+Like tightening every screw in a machine until it hums instead of rattles.
+
+---
+
+Status right now:
+
+Phase 4.2 isn’t just complete.
+
+It’s integrated.
+
+And I can feel it.
