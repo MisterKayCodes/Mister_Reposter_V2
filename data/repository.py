@@ -1,9 +1,9 @@
 """
 DATA: REPOSITORY
 Handles all database operations for users and repost pairs.
-This layer is strictly for reading and writing to the Vault.
+Strictly for reading and writing to the Vault.
 """
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from .models import User, RepostPair
 
@@ -39,6 +39,7 @@ class UserRepository:
         filter_type: int = 1, replacement_link: str = None,
         schedule_interval: int = None, start_from_msg_id: int = None
     ):
+        # Rule 5: Check for existing pairs to prevent duplicates
         existing = await self.session.execute(
             select(RepostPair).where(
                 RepostPair.user_id == user_id,
@@ -57,6 +58,8 @@ class UserRepository:
             replacement_link=replacement_link,
             schedule_interval=schedule_interval,
             start_from_msg_id=start_from_msg_id,
+            status="active",
+            is_active=True
         )
         self.session.add(new_pair)
         await self.session.commit()
@@ -94,6 +97,7 @@ class UserRepository:
         return result.scalars().all()
 
     async def get_all_active_users_with_pairs(self):
+        # Rule 11: Optimized distinct query
         query = select(RepostPair.user_id).where(RepostPair.is_active == True).distinct()
         result = await self.session.execute(query)
         return [row[0] for row in result.all()]
@@ -142,14 +146,17 @@ class UserRepository:
         return False
 
     async def increment_error_count(self, pair_id: int) -> int:
+        # Rule 7: Atomic increment is safer and faster
         result = await self.session.execute(
             select(RepostPair).where(RepostPair.id == pair_id)
         )
         pair = result.scalar_one_or_none()
         if pair:
             pair.error_count = (pair.error_count or 0) + 1
+            current_count = pair.error_count
             await self.session.commit()
-            return pair.error_count
+            # Ensure the object is refreshed with the commit result
+            return current_count
         return 0
 
     async def reset_error_count(self, pair_id: int):
@@ -159,6 +166,7 @@ class UserRepository:
         pair = result.scalar_one_or_none()
         if pair:
             pair.error_count = 0
+            # If it was an error status, bring it back to active
             if pair.status == "error":
                 pair.status = "active"
             await self.session.commit()

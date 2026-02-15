@@ -2,7 +2,6 @@
 PROVIDERS: TELETHON CLIENT
 The 'Eyes' of the organism. (Rule 11)
 Handles raw communication with Telegram Servers.
-Pure communication, no logic allowed.
 """
 import logging
 import asyncio
@@ -12,7 +11,6 @@ from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInv
 from telethon.tl.functions.channels import JoinChannelRequest
 
 logger = logging.getLogger(__name__)
-
 
 class TelethonProvider:
     def __init__(self, api_id: int, api_hash: str):
@@ -29,149 +27,118 @@ class TelethonProvider:
             return False
 
     async def start_listener(self, user_id: int, session_data, callback):
-        if user_id in self.active_clients:
-            client = self.active_clients[user_id]
-            try:
-                if client.is_connected():
-                    return
-                else:
-                    logger.info(f"Re-opening closed eyes for User {user_id}")
-                    await self.stop_listener(user_id)
-            except Exception:
-                del self.active_clients[user_id]
+        # Rule 1: Idempotency - Don't double-start
+        if user_id in self.active_clients and self.active_clients[user_id].is_connected():
+            logger.info(f"Eyes already open for User {user_id}")
+            return
 
         try:
             client = TelegramClient(session_data, self.api_id, self.api_hash)
-            await client.start()
+            
+            for attempt in range(2):
+                try:
+                    await client.connect()
+                    if not await client.is_user_authorized():
+                        logger.warning(f"User {user_id} unauthorized.")
+                        await client.disconnect()
+                        return
+                    break
+                except (OSError, asyncio.TimeoutError) as e:
+                    if attempt == 1: raise e
+                    await asyncio.sleep(2)
+
             self.active_clients[user_id] = client
 
             @client.on(events.NewMessage())
             async def handler(event):
-                await callback(event.message, user_id)
+                if event and event.message:
+                    # Rule 3: Single Responsibility - Just pass the signal back
+                    await callback(event.message, user_id)
 
-            asyncio.create_task(client.run_until_disconnected())
+            asyncio.create_task(
+                client.run_until_disconnected(), 
+                name=f"eyes_{user_id}"
+            )
             logger.info(f"Eyes wide open for User {user_id}")
 
         except Exception as e:
             logger.error(f"Failed to open Eyes for User {user_id}: {e}")
-            if user_id in self.active_clients:
-                del self.active_clients[user_id]
-
-    async def send_message(self, user_id: int, destination: str, message) -> dict:
-        client = self.active_clients.get(user_id)
-        if not client or not client.is_connected():
-            return {"ok": False, "error": "no_client", "detail": "No active client"}
-
-        try:
-            if destination.replace('-', '').isdigit():
-                target = int(destination)
-            else:
-                target = destination
-
-            if isinstance(message, list):
-                files = [m.media for m in message if m.media]
-                text = next((m.text for m in message if m.text), "")
-
-                if files:
-                    result = await client.send_file(target, files, caption=text)
-                else:
-                    result = await client.send_message(target, message=text)
-            else:
-                result = await client.send_message(target, message)
-
-            logger.info(f"Successful blink to {destination}")
-            sent_id = None
-            if hasattr(result, "id"):
-                sent_id = result.id
-            elif isinstance(result, list) and result:
-                sent_id = result[0].id if hasattr(result[0], "id") else None
-            return {"ok": True, "sent_id": sent_id}
-        except FloodWaitError as e:
-            wait_seconds = e.seconds
-            logger.warning(f"FloodWait: must wait {wait_seconds}s before sending to {destination}")
-            return {"ok": False, "error": "flood_wait", "wait_seconds": wait_seconds, "detail": f"Rate limited for {wait_seconds}s"}
-        except Exception as e:
-            logger.error(f"Blink failed: {e}")
-            return {"ok": False, "error": "send_error", "detail": str(e)}
+            self.active_clients.pop(user_id, None)
 
     async def join_channel(self, user_id: int, invite_hash: str) -> dict | None:
-        """Joins a private channel via invite hash. Returns the chat entity or None."""
         client = self.active_clients.get(user_id)
-        if not client or not client.is_connected():
-            logger.warning(f"Cannot join channel: no active client for {user_id}")
-            return None
+        if not client or not client.is_connected(): return None
 
         try:
             result = await client(ImportChatInviteRequest(invite_hash))
             chat = result.chats[0] if result.chats else None
             if chat:
-                logger.info(f"Joined private channel via invite for User {user_id}: {chat.id}")
                 return {"id": chat.id, "title": getattr(chat, "title", "")}
             return None
         except Exception as e:
-            error_msg = str(e)
-            if "already" in error_msg.lower() or "USER_ALREADY_PARTICIPANT" in error_msg:
+            err = str(e).lower()
+            if "already" in err or "participant" in err:
                 try:
                     result = await client(CheckChatInviteRequest(invite_hash))
                     chat = getattr(result, "chat", None)
                     if chat:
                         return {"id": chat.id, "title": getattr(chat, "title", "")}
-                except Exception:
-                    pass
-                logger.info(f"User {user_id} already in channel from invite")
+                except: pass
                 return {"id": None, "title": "already_joined"}
-            logger.error(f"Failed to join channel for User {user_id}: {e}")
             return None
 
     async def resolve_entity(self, user_id: int, identifier: str) -> dict | None:
-        """Resolves a username or numeric ID to a Telegram entity."""
         client = self.active_clients.get(user_id)
-        if not client or not client.is_connected():
-            return None
+        if not client or not client.is_connected(): return None
 
         try:
-            if identifier.replace("-", "").isdigit():
-                entity = await client.get_entity(int(identifier))
-            else:
-                entity = await client.get_entity(identifier)
+            # Rule 6: Robust Entity Resolution
+            target = identifier
+            if str(identifier).replace("-", "").isdigit():
+                target = int(identifier)
+            
+            entity = await client.get_entity(target)
             return {
                 "id": entity.id,
-                "title": getattr(entity, "title", getattr(entity, "username", "")),
+                "title": getattr(entity, "title", getattr(entity, "username", "Unknown")),
             }
         except Exception as e:
-            logger.error(f"Failed to resolve entity '{identifier}': {e}")
+            logger.error(f"Failed to resolve '{identifier}': {e}")
             return None
 
     async def fetch_messages_from(self, user_id: int, source_id: str, from_msg_id: int, limit: int = 100):
-        """Fetches messages from a channel starting from a specific message ID."""
         client = self.active_clients.get(user_id)
-        if not client or not client.is_connected():
-            return []
+        if not client or not client.is_connected(): return []
 
         try:
-            if source_id.replace("-", "").isdigit():
-                entity = int(source_id)
-            else:
-                entity = source_id
-
-            messages = await client.get_messages(
-                entity, min_id=from_msg_id - 1, limit=limit
-            )
+            target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
+            messages = await client.get_messages(target, min_id=from_msg_id - 1, limit=limit)
             return list(reversed(messages)) if messages else []
         except Exception as e:
-            logger.error(f"Failed to fetch messages from {source_id}: {e}")
+            logger.error(f"Fetch failed for {source_id}: {e}")
             return []
 
-    async def stop_listener(self, user_id: int):
+    async def send_message(self, user_id: int, destination: str | int, message: any) -> dict:
+        """Sends or forwards a message. Returns a standardized dict for the Engine."""
         client = self.active_clients.get(user_id)
+        if not client or not client.is_connected():
+            return {"ok": False, "error": "disconnected"}
+
+        try:
+            target = int(destination) if str(destination).replace("-", "").isdigit() else destination
+            sent = await client.send_message(target, message)
+            return {"ok": True, "message": sent}
+        except FloodWaitError as e:
+            return {"ok": False, "error": "flood_wait", "wait_seconds": e.seconds}
+        except Exception as e:
+            logger.error(f"Telethon send error: {e}")
+            return {"ok": False, "error": "exception", "detail": str(e)}
+
+    async def stop_listener(self, user_id: int):
+        client = self.active_clients.pop(user_id, None)
         if client:
             try:
-                logger.info(f"Closing Eyes for User {user_id}...")
                 await client.disconnect()
-                await asyncio.sleep(0.2)
-                if user_id in self.active_clients:
-                    del self.active_clients[user_id]
                 return True
-            except Exception as e:
-                logger.error(f"Error while closing eyes for {user_id}: {e}")
+            except: pass
         return False

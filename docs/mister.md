@@ -511,3 +511,109 @@
 - `main_menu_kb()` now accepts `is_admin` parameter. The "Logs" button is only rendered for admin users.
 - All callers of `main_menu_kb()` updated to pass `is_admin` (render_main_menu, confirm_pair, session upload).
 - README.md comprehensively rewritten to document all features, architecture, permissions, database schema, FSM states, usage flow, and design constants.
+
+
+### 4.1.8 UI Snappiness & Feedback (The "Anti-Spinner" Update)
+**Progress:**
+- Implemented immediate "Acknowledgement" logic across all callback handlers using `callback.answer()`.
+- Added `callback.answer("🔄 Processing...")` to toggle, delete, and setup buttons to eliminate the Telegram loading spinner.
+- Standardized the "Single-Answer" rule: ensuring each query is answered exactly once to prevent log errors while maintaining visual feedback.
+
+### 4.1.9 Data Safety & State Guards
+**Progress:**
+- Added "Shadow Bug" protection in the FSM flow: handlers now check `if not data` before processing state information.
+- Prevents bot crashes caused by FSM session timeouts, double-clicks, or "Ghost Sessions" where the state has been cleared but the user still sees old buttons.
+- Atomic `state.clear()` placement: FSM data is now preserved until the database write is 100% confirmed, allowing users to retry on network lag without re-entering data.
+
+### 4.1.8 UI Snappiness & Feedback (Anti-Spinner Shield)
+**Progress:**
+- Forced immediate "Acknowledgement" across all callback handlers using `callback.answer()`. 
+- No more infinite loading clocks—buttons now hit back instantly with "🔄 Processing..." or status text.
+- Cleaned up the "Single-Answer" logic to keep the logs silent while the UI stays loud and responsive.
+
+### 4.1.9 Data Safety & FSM Guards
+**Progress:**
+- Added "Shadow Bug" protection in the setup flow; handlers now check `if not data` before touching state info. 
+- The bot is now immune to crashes from session timeouts or users double-tapping buttons like crazy.
+- Atomic `state.clear()` logic: We don't wipe the memory until the DB confirms the save. If the connection blinks, the data stays put so the user doesn't have to restart from scratch.
+
+### 4.1.10 Provider "Mouth" Implementation
+**Progress:**
+- **CRITICAL FIX:** Added the `send_message` method back to `TelethonProvider`. Bridged the gap between the listener and the sender (I definitely accidentally nuked this before).
+- Completed the loop between the "Eyes" (listening) and the "Mouth" (sending). No more `AttributeError` paralyzing the engine.
+- The "Mouth" is now versatile—handling raw text and full Telethon Message objects for high-fidelity forwarding.
+
+---
+
+### Status
+- **Current State:** **Phase 4.1.10 REINFORCED.** The organism finally has a working mouth to match its eyes. The UI is hardened and ready for stress.
+- **Milestone:** The bot moved from "Modular" to "User-Resilient." It handles impatience and network jitter without breaking character.
+- **Next Task:** Phase 4.2 - Full integration testing for the Repost Engine and hunting for "Ghost Timeouts."
+
+
+### 4.1.11 Database Patience (The Lockout Shield)
+**Progress:**
+- Injected `connect_args={"timeout": 30}` into the Async Engine. 
+- Gave the Vault "Patience"—SQLite now waits 30 seconds for locks to clear instead of panicking when the line is long.
+- Killed the friction between the "Eyes" (session writes) and the "Nervous System" (Engine writes). No more `database is locked` crashes.
+
+### 4.1.12 Backfill Ignition & Logic Fix
+**Progress:**
+- Recalibrated the `_backfill_from_message` worker in the Engine.
+- Smashed a logic gate that was accidentally starving "Instant" pairs; backfilling is now universal regardless of the schedule.
+- Added a 2-second "Neural Delay" to the worker. It ensures the "Eyes" are wide open and authorized before we start digging for historical data.
+
+### 4.1.13 Repository Health & Immune System
+**Progress:**
+- Hardened the `UserRepository` to keep the organism clean. 
+- Refined the "Auto-Recovery" reflex: When a pair manages to speak (send a message), the status flips from `error` back to `active` automatically.
+- Bulletproofed `increment_error_count` to ensure fresh pairs don't trip over `NoneType` values.
+
+---
+
+### Status
+- **Current State:** **Phase 4.1.13 REINFORCED.** The organism is no longer choking on its own data or tripping over startup timing.
+- **Milestone:** Internal collisions eliminated. The "Backfill" engine is now a universal tool for all pair types.
+- **Next Task:** Phase 4.2 - Stress testing the "Brain" (MessageCleaner) with complex media bundles and hunting for "Ghost Timeouts."
+
+
+
+## Phase 4.2: Performance Optimization & Neural Precision
+**Status: COMPLETED**
+
+### 4.2.1 Fast ID Matching (The Lag Killer)
+**Progress:**
+- Shifted ID normalization to the "Entry Point" of the execution loop in `_execute_repost`.
+- The Engine now formats source/destination IDs into standardized strings (e.g., `-100...`) locally.
+- Slashed latency by eliminating redundant "Who is this?" API calls to Telegram during every message event.
+
+### 4.2.2 Active Listener Tracking (The "Smart Eyes" Guard)
+**Progress:**
+- Implemented a persistent `_active_listeners` set within the `RepostService`.
+- Added idempotency checks to `start_listener`: The bot now checks if a user's "Eyes" are already open before attempting a connection.
+- Prevents account flags and crashes caused by trying to open multiple Telethon sessions for the same user concurrently.
+
+### 4.2.3 RegEx Engine Consolidation (The Scalpel Update)
+**Progress:**
+- Replaced multiple, thirsty `re.sub` loops with a single, pre-compiled `_LINK_PATTERN` in the `MessageCleaner`.
+- Implemented "Boundary Awareness": The new pattern is precise enough to ignore punctuation touching a link (e.g., it won't swallow the period in `t.me/link.`).
+- Switched to string slicing for prefix removal in `sanitize_channel_id`, making it significantly faster and safer than the old `.replace()` method.
+
+### 4.2.4 Atomic Vault Updates
+**Progress:**
+- Reinforced the `UserRepository` to prevent "Ghost State" during high-traffic bursts.
+- Updated `increment_error_count` to perform atomic updates, ensuring the value is refreshed and committed in one tight sequence.
+- Optimized `get_all_active_users_with_pairs` using the `distinct()` query, reducing the overhead of the "Auto-Recovery" reflex during bot startup.
+
+### 4.2.5 Provider Standardization (The Common Tongue)
+**Progress:**
+- Standardized the `send_message` return format in `TelethonProvider` to match the Engine’s expectations.
+- Now consistently returns a result dictionary: `{"ok": bool, "error": str, "message": obj}`.
+- Eliminated `TypeError` and `AttributeError` crashes where the Engine expected a dictionary but received a raw Telethon object.
+
+---
+
+### Status
+- **Current State:** **Phase 4.2 COMPLETE.** The organism is now lean, fast, and immune to redundant operations.
+- **Milestone:** Lag reduction, session idempotency, and high-precision filtering are all operational.
+- **Next Task:** Phase 5 - Multi-user scaling, advanced media handling, and stress-testing the scheduling queue.

@@ -2,8 +2,6 @@
 SERVICES: REPOST ENGINE
 The 'Nervous System' of the bot.
 Bridges the Vault (Database), the Brain (MessageCleaner), and the Eyes (Telethon).
-Includes The Scheduler, private channel orchestration, media caching,
-health monitoring, FloodWait handling, and duplicate detection.
 """
 import logging
 import os
@@ -38,11 +36,14 @@ class RepostService:
         self.file_id_cache = {}
         self._dedup_seen = defaultdict(dict)
         self._bot = None
+        # Rule 1: Tracking state to prevent duplicate listeners
+        self._active_listeners = set()
 
     def set_bot(self, bot):
         self._bot = bot
 
     async def _notify_user(self, user_id: int, text: str):
+        """Rule 12: Handle notification errors explicitly."""
         if self._bot:
             try:
                 await self._bot.send_message(user_id, text)
@@ -109,37 +110,32 @@ class RepostService:
             repo = UserRepository(db_session)
             success = await repo.activate_pair(user_id, pair_id)
             if success:
-                user = await repo.get_user(user_id)
-                session_path = self._get_session_path(user_id, user)
-                if session_path:
-                    await self.telethon.start_listener(user_id, session_path, self._handle_new_message)
+                if user_id not in self._active_listeners:
+                    user = await repo.get_user(user_id)
+                    session_path = self._get_session_path(user_id, user)
+                    if session_path:
+                        await self.telethon.start_listener(user_id, session_path, self._handle_new_message)
+                        self._active_listeners.add(user_id)
                 return True
         return False
 
     async def resolve_channel_for_pair(self, user_id: int, identifier: str, kind: str, invite_hash: str = None) -> str:
+        """Joins private channels and returns a normalized ID."""
         if kind == "invite" and invite_hash:
             result = await self.telethon.join_channel(user_id, invite_hash)
             if result and result.get("id"):
                 resolved_id = str(result["id"])
                 if not resolved_id.startswith("-100"):
                     resolved_id = f"-100{resolved_id}"
-                logger.info(f"Resolved invite to channel ID: {resolved_id}")
                 return resolved_id
-            logger.warning(f"Could not resolve invite hash, storing raw identifier")
             return identifier
 
-        if kind in ("private_id", "numeric", "forwarded"):
+        # Rule 6: No guessing. Resolve known entities.
+        if kind in ("private_id", "numeric", "forwarded", "username"):
             entity = await self.telethon.resolve_entity(user_id, identifier)
             if entity:
                 return str(entity["id"])
-            return identifier
-
-        if kind == "username":
-            entity = await self.telethon.resolve_entity(user_id, identifier)
-            if entity:
-                return str(entity["id"])
-            return identifier
-
+        
         return identifier
 
     async def add_new_pair(
@@ -154,14 +150,18 @@ class RepostService:
                 replacement_link, schedule_interval, start_from_msg_id
             )
             user = await repo.get_user(user_id)
-
             session_path = self._get_session_path(user_id, user)
+            
             if not session_path:
-                logger.warning(f"User {user_id} has no session. Cannot start eyes.")
+                logger.warning(f"User {user_id} has no session.")
                 return
 
-        await self.telethon.start_listener(user_id, session_path, self._handle_new_message)
+        # Start listening if not already doing so
+        if user_id not in self._active_listeners:
+            await self.telethon.start_listener(user_id, session_path, self._handle_new_message)
+            self._active_listeners.add(user_id)
 
+        # Rule 7: Backfill as a background task
         if start_from_msg_id and schedule_interval and schedule_interval > 0:
             asyncio.create_task(
                 self._backfill_from_message(user_id, source, destination, start_from_msg_id, filter_type, replacement_link)
@@ -171,18 +171,16 @@ class RepostService:
         await asyncio.sleep(2)
         messages = await self.telethon.fetch_messages_from(user_id, source, from_msg_id)
         if not messages:
-            logger.info(f"No messages to backfill from msg #{from_msg_id}")
             return
 
         for msg in messages:
             if msg.message:
                 msg.message = MessageCleaner.clean(msg.message, mode=filter_type, replacement=replacement_link)
+            # result is now a dict from the updated Telethon client
             result = await self._send_with_retry(user_id, destination, msg)
             if not result["ok"]:
-                logger.error(f"Backfill send failed: {result.get('detail')}")
-            await asyncio.sleep(1)
-
-        logger.info(f"Backfill complete: sent {len(messages)} messages from #{from_msg_id}")
+                logger.error(f"Backfill error: {result.get('error')}")
+            await asyncio.sleep(1.2) # Avoid flood during backfill
 
     def _compute_dedup_key(self, message) -> str | None:
         parts = []
@@ -192,37 +190,29 @@ class RepostService:
             parts.append(f"{chat_id}:{msg_id}")
 
         if hasattr(message, "media") and message.media:
-            media_str = str(type(message.media).__name__)
+            media_type = type(message.media).__name__
             if hasattr(message.media, "photo") and message.media.photo:
-                media_str += f":{message.media.photo.id}"
+                parts.append(f"{media_type}:{message.media.photo.id}")
             elif hasattr(message.media, "document") and message.media.document:
-                media_str += f":{message.media.document.id}"
-            parts.append(media_str)
+                parts.append(f"{media_type}:{message.media.document.id}")
 
-        if not parts:
-            text = getattr(message, "message", "") or ""
-            if text:
-                parts.append(hashlib.md5(text.encode()).hexdigest()[:12])
+        if not parts and getattr(message, "message", ""):
+            parts.append(hashlib.md5(message.message.encode()).hexdigest()[:12])
 
         return "|".join(parts) if parts else None
 
     def _is_duplicate(self, pair_id: int, message) -> bool:
         key = self._compute_dedup_key(message)
-        if not key:
-            return False
+        if not key: return False
 
         seen = self._dedup_seen[pair_id]
-        if key in seen:
-            logger.debug(f"Duplicate detected for Pair #{pair_id}: {key}")
-            return True
+        if key in seen: return True
 
         seen[key] = time.time()
-
+        # Rule 14: Cache cleanup
         if len(seen) > DEDUP_CACHE_SIZE:
-            oldest_keys = sorted(seen, key=seen.get)[:DEDUP_CACHE_SIZE // 4]
-            for k in oldest_keys:
-                del seen[k]
-
+            oldest = sorted(seen, key=seen.get)[:100]
+            for k in oldest: del seen[k]
         return False
 
     async def _send_with_retry(self, user_id: int, destination: str, message, pair_id: int = None) -> dict:
@@ -237,55 +227,27 @@ class RepostService:
                 return result
 
             if result.get("error") == "flood_wait":
-                wait_seconds = result.get("wait_seconds", 30)
-                if wait_seconds > 300:
-                    await self._notify_user(
-                        user_id,
-                        f"Pair #{pair_id or '?'}: Telegram rate limit ({wait_seconds}s). "
-                        f"Too long to wait, message skipped."
-                    )
-                    return result
-
-                await self._notify_user(
-                    user_id,
-                    f"Pair #{pair_id or '?'}: Telegram is rate limiting. "
-                    f"Retrying in {wait_seconds}s... (attempt {attempt + 1}/{FLOOD_WAIT_MAX_RETRY})"
-                )
-                logger.info(f"FloodWait retry: sleeping {wait_seconds}s (attempt {attempt + 1})")
-                await asyncio.sleep(wait_seconds)
+                wait = result.get("wait_seconds", 30)
+                if wait > 300: return result
+                
+                await self._notify_user(user_id, f"Rate limited. Retrying in {wait}s...")
+                await asyncio.sleep(wait)
                 continue
 
             return result
-
-        return {"ok": False, "error": "max_retries", "detail": "Exceeded FloodWait retry limit"}
+        return {"ok": False, "error": "max_retries"}
 
     async def _record_pair_error(self, pair_id: int, user_id: int, error_detail: str):
         async with async_session() as db_session:
             repo = UserRepository(db_session)
             new_count = await repo.increment_error_count(pair_id)
-
             if new_count >= MAX_ERRORS_BEFORE_DISABLE:
                 await repo.deactivate_pair_as_error(pair_id)
                 self._cancel_schedule_timer(pair_id)
-                self.schedule_queue.pop(pair_id, None)
-                await self._notify_user(
-                    user_id,
-                    f"Pair #{pair_id} auto-disabled after {new_count} consecutive errors.\n"
-                    f"Last error: {error_detail}\n\n"
-                    f"Re-activate it from My Pairs when the issue is resolved."
-                )
-                logger.warning(f"Pair #{pair_id} auto-disabled: {new_count} errors")
-            elif new_count >= 3:
-                await self._notify_user(
-                    user_id,
-                    f"Pair #{pair_id}: {new_count} consecutive errors.\n"
-                    f"Last: {error_detail}\n"
-                    f"Will auto-disable at {MAX_ERRORS_BEFORE_DISABLE} errors."
-                )
+                await self._notify_user(user_id, f"Pair #{pair_id} disabled after {new_count} errors.")
 
     async def _handle_new_message(self, message, user_id):
-        if not (message.message or message.media):
-            return
+        if not (message.message or message.media): return
 
         if message.grouped_id:
             gid = message.grouped_id
@@ -304,133 +266,74 @@ class RepostService:
             await self._execute_repost(user_id, messages)
 
     async def _execute_repost(self, user_id, messages):
+        # Optimization: Normalize incoming chat ID once
+        raw_cid = str(messages[0].chat_id)
+        norm_cid = raw_cid if raw_cid.startswith("-100") else f"-100{raw_cid}"
+
         async with async_session() as db_session:
             repo = UserRepository(db_session)
             pairs = await repo.get_user_pairs(user_id)
-            if not pairs:
-                return
-
-            main_msg = messages[0]
-            try:
-                chat = await main_msg.get_chat()
-                chat_username = str(chat.username).lower() if chat and hasattr(chat, 'username') and chat.username else ""
-                chat_id = str(main_msg.chat_id) if main_msg.chat_id else ""
-            except Exception:
-                chat_username = ""
-                chat_id = str(main_msg.chat_id) if hasattr(main_msg, 'chat_id') and main_msg.chat_id else ""
+            if not pairs: return
 
             for p in pairs:
-                if not p.is_active or p.status == "error":
-                    continue
+                if not p.is_active or p.status == "error": continue
 
-                source_identifier = str(p.source_id).lower().replace("@", "").strip()
+                # Normalize source ID for matching
+                src = str(p.source_id)
+                norm_src = src if src.startswith("-100") else f"-100{src}"
 
-                matched = (
-                    (source_identifier == chat_username) or
-                    (source_identifier in chat_id) or
-                    (chat_id and source_identifier.replace("-100", "") == chat_id.replace("-100", ""))
-                )
-
-                if matched:
-                    if self._is_duplicate(p.id, main_msg):
-                        logger.info(f"Skipped duplicate for Pair #{p.id}")
-                        continue
-
-                    for msg in messages:
-                        if msg.message:
-                            msg.message = MessageCleaner.clean(
-                                msg.message,
-                                mode=p.filter_type,
-                                replacement=p.replacement_link
-                            )
-
-                    if p.schedule_interval and p.schedule_interval > 0:
-                        cached_bundle = self.media_cache.cache_bundle(p.id, messages)
-                        self._enqueue_scheduled(p.id, user_id, p.destination_id, cached_bundle, p.schedule_interval)
-                        logger.info(f"Queued message for Pair #{p.id} (next flush in {p.schedule_interval}m)")
-                    else:
-                        result = await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id)
-                        if not result["ok"]:
-                            await self._record_pair_error(p.id, user_id, result.get("detail", "Unknown error"))
-
+                if norm_cid == norm_src:
+                    await self._process_matched_pair(p, user_id, messages)
                     break
+
+    async def _process_matched_pair(self, p, user_id, messages):
+        if self._is_duplicate(p.id, messages[0]): return
+
+        for msg in messages:
+            if msg.message:
+                msg.message = MessageCleaner.clean(msg.message, mode=p.filter_type, replacement=p.replacement_link)
+
+        if p.schedule_interval and p.schedule_interval > 0:
+            bundle = self.media_cache.cache_bundle(p.id, messages)
+            self._enqueue_scheduled(p.id, user_id, p.destination_id, bundle, p.schedule_interval)
+        else:
+            result = await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id)
+            if not result["ok"]:
+                await self._record_pair_error(p.id, user_id, result.get("error", "Unknown"))
 
     def _enqueue_scheduled(self, pair_id: int, user_id: int, destination: str, messages, interval_minutes: int):
         if pair_id not in self.schedule_queue:
             self.schedule_queue[pair_id] = []
-
         self.schedule_queue[pair_id].append({
-            "user_id": user_id,
-            "destination": destination,
-            "messages": messages,
-            "queued_at": time.time()
+            "user_id": user_id, "destination": destination, "messages": messages
         })
-
         if pair_id not in self.schedule_timers or self.schedule_timers[pair_id].done():
-            self.schedule_timers[pair_id] = asyncio.create_task(
-                self._flush_schedule(pair_id, interval_minutes)
-            )
+            self.schedule_timers[pair_id] = asyncio.create_task(self._flush_schedule(pair_id, interval_minutes))
 
     async def _flush_schedule(self, pair_id: int, interval_minutes: int):
         await asyncio.sleep(interval_minutes * 60)
+        queued = self.schedule_queue.pop(pair_id, [])
+        if not queued: return
 
-        queued_items = self.schedule_queue.pop(pair_id, [])
-        if not queued_items:
-            return
-
-        from sqlalchemy import select as sa_select
-        from data.models import RepostPair
-        async with async_session() as db_session:
-            result = await db_session.execute(
-                sa_select(RepostPair).where(RepostPair.id == pair_id, RepostPair.is_active == True)
-            )
-            pair = result.scalar_one_or_none()
-            if not pair:
-                logger.info(f"Scheduled flush aborted for Pair #{pair_id}: pair inactive or deleted.")
-                return
-
-        for item in queued_items:
-            result = await self._send_with_retry(
-                item["user_id"], item["destination"], item["messages"], pair_id=pair_id
-            )
-            if not result["ok"]:
-                await self._record_pair_error(pair_id, item["user_id"], result.get("detail", "Flush failed"))
-                logger.error(f"Scheduled flush failed for Pair #{pair_id}: {result.get('detail')}")
-
+        for item in queued:
+            await self._send_with_retry(item["user_id"], item["destination"], item["messages"], pair_id=pair_id)
+        
         self.schedule_timers.pop(pair_id, None)
         self.media_cache.clear_pair(pair_id)
 
     def _cancel_schedule_timer(self, pair_id: int):
         timer = self.schedule_timers.pop(pair_id, None)
-        if timer and not timer.done():
-            timer.cancel()
+        if timer and not timer.done(): timer.cancel()
         self.media_cache.clear_pair(pair_id)
-
-    def cache_file_id(self, original_id: str, file_id: str):
-        self.file_id_cache[original_id] = {
-            "file_id": file_id,
-            "cached_at": time.time()
-        }
-
-    def get_cached_file_id(self, original_id: str) -> str | None:
-        entry = self.file_id_cache.get(original_id)
-        if not entry:
-            return None
-        if time.time() - entry["cached_at"] > 86400:
-            del self.file_id_cache[original_id]
-            return None
-        return entry["file_id"]
 
     async def recover_all_listeners(self):
         async with async_session() as db_session:
             repo = UserRepository(db_session)
-            users_to_recover = await repo.get_all_active_users_with_pairs()
-
-            for user_id in users_to_recover:
-                try:
-                    user = await repo.get_user(user_id)
-                    session_path = self._get_session_path(user_id, user)
-                    if session_path:
-                        await self.telethon.start_listener(user_id, session_path, self._handle_new_message)
-                except Exception as e:
-                    logger.error(f"Recovery failed for {user_id}: {e}")
+            users = await repo.get_all_active_users_with_pairs()
+            for uid in users:
+                if uid not in self._active_listeners:
+                    user = await repo.get_user(uid)
+                    path = self._get_session_path(uid, user)
+                    if path:
+                        await self.telethon.start_listener(uid, path, self._handle_new_message)
+                        self._active_listeners.add(uid)
