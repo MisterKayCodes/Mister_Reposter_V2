@@ -156,3 +156,39 @@ async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logger.error(f"Rule 12: Fail for {user_id}: {e}")
         await callback.message.answer("⚠️ Database busy. Please tap **Confirm** again.", reply_markup=confirm_pair_kb())
+
+
+
+# --- DELETE LOGIC (The "Eraser" Implementation) ---
+
+@router.callback_query(F.data.startswith("del_"))
+async def cb_ask_delete(callback: types.CallbackQuery):
+    """Step 1: Matches pairs_kb button 'del_{p.id}'"""
+    await safe_callback_answer(callback, "🗑️ Preparing to delete...")
+    pair_id = int(callback.data.split("_")[1])
+    
+    # Matches delete_confirm_kb logic
+    await callback.message.edit_text(
+        f"<b>⚠️ Delete Pair #{pair_id}?</b>\n\nThis action cannot be undone.",
+        reply_markup=delete_confirm_kb(pair_id),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("cdel_"))
+async def cb_execute_delete(callback: types.CallbackQuery):
+    """Step 2: Matches delete_confirm_kb button 'cdel_{pair_id}'"""
+    await safe_callback_answer(callback, "🧨 Deleting...")
+    pair_id = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
+
+    try:
+        # Rule 11: Call the engine to wipe the pair and stop timers
+        success = await repost_service.delete_single_pair(user_id, pair_id)
+        if success:
+            await safe_callback_answer(callback, "✅ Deleted successfully!")
+            await render_pairs_view(callback.message, user_id)
+        else:
+            await safe_callback_answer(callback, "❌ Pair not found.", show_alert=True)
+    except Exception as e:
+        logger.error(f"Delete failed: {e}")
+        await safe_callback_answer(callback, "⚠️ Connection lag.", show_alert=True)
