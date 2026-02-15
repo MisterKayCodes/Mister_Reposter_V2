@@ -862,3 +862,626 @@ I shut the laptop knowing something important:
 This system can grow now.
 
 And so can I.
+
+
+
+## The Scheduler — Teaching the Bot to Wait
+
+This part arrived differently.
+
+No crisis. No 2 a.m. panic.
+
+Just a clear request and a clean architecture ready to receive it.
+
+I sat down knowing what I wanted:
+the bot should stop being impulsive.
+
+Not every message needs to land the second it arrives.
+
+Some things are better held. Collected. Released on schedule.
+
+That's what this was about.
+
+---
+
+### The Question — When Should It Send?
+
+I added a new step to the pair creation flow.
+
+Step 5 now.
+
+After the user picks their source, destination, and filter — the bot asks one more thing:
+
+"How often do you want this delivered?"
+
+Ten options. Clean buttons. Stacked vertically.
+
+Instant. 5 minutes. 15. 30. An hour. Two. Four. Eight. Twelve. Twenty-four.
+
+No typing. No guessing. Just tap.
+
+It felt like the right amount of control to hand over.
+
+---
+
+### The Queue — Holding Without Forgetting
+
+Under the hood, the Nervous System learned patience.
+
+When a scheduled pair catches a message, it doesn't fire immediately.
+
+It holds the message in memory — a dictionary keyed by pair ID.
+
+A timer starts. One `asyncio.Task` per pair.
+
+When the interval expires, the timer wakes up, grabs everything in the queue, and sends it all at once.
+
+Then it goes back to sleep.
+
+No polling. No loops. Just one task, one heartbeat, one flush.
+
+That simplicity took longer to arrive at than I expected.
+
+---
+
+### The Vault Remembers
+
+The schedule interval lives in the database now.
+
+One new column: `schedule_interval`. Integer. Nullable.
+
+Alembic handled the migration cleanly — no data loss, no table drops.
+
+The Librarian accepts it. The Mouth asks for it. The Nervous System respects it.
+
+Every layer did its job without complaint.
+
+That's when you know the architecture is working.
+
+---
+
+### Timer Hygiene — Cleaning Up After Yourself
+
+When a pair gets stopped, deleted, or deactivated — the timer gets cancelled.
+
+No ghost flushes.
+No messages sent after the user said "stop."
+
+It's a small thing. But it matters.
+
+Because a system that doesn't listen to "stop" isn't a tool.
+It's a problem.
+
+---
+
+### What Changed in the Flow
+
+`/createpair` is now a 5-step conversation instead of 4.
+
+`/viewpairs` shows the schedule alongside everything else.
+
+The confirmation message tells you exactly what interval you chose.
+
+Nothing broke.
+Nothing shifted sideways.
+
+The existing architecture just... absorbed it.
+
+---
+
+### What It Felt Like
+
+This was the first feature I added that didn't fight me.
+
+No emergency debugging.
+No missing methods.
+No "why is this crashing" at midnight.
+
+Just design, implement, migrate, test.
+
+Maybe that's what growth looks like —
+not the absence of problems,
+but the presence of a system that can hold new weight without cracking.
+
+---
+
+### Status
+
+The bot now understands time.
+
+Not just "now."
+
+But "later."
+
+And "later" is where discipline lives.
+
+
+
+## The Button Era — When the Mouth Stopped Expecting Typing
+
+Valentine's Day. Still no date. Still coding.
+
+The neighbor's generator kicked in around the time I realized something:
+
+Nobody should have to type `/stoppair 3`.
+
+Not in 2026. Not when buttons exist.
+
+I looked at the handler file — full of `Command("this")`, `Command("that")` — and felt the same thing I feel when I see a restaurant menu that's three pages long.
+
+Too many doors. Not enough guidance.
+
+So I burned the menu down and rebuilt it with four buttons.
+
+---
+
+### The Purge — Killing What Worked
+
+This part was uncomfortable.
+
+Every slash command worked. `/viewpairs`. `/deletepair`. `/stoppair`. All of them.
+
+But working isn't the same as good.
+
+Typing commands is friction. And friction is what makes people stop using things.
+
+So I deleted them. All of them. Kept only `/start` because Telegram requires an entry point.
+
+Everything else became a button.
+
+That decision took longer to make than to implement.
+
+---
+
+### The Button Rack — Giving the Mouth Its Own Drawer
+
+The architecture rule was simple:
+keyboards don't belong in handlers.
+
+Before this, every button was built inline — right there in the handler function.
+
+It was convenient.
+It was messy.
+
+So I created `bot/keyboards.py`.
+
+Every keyboard builder lives there now.
+The Mouth just imports what it needs.
+
+Main menu. Pairs view. Filters. Schedules. Confirmations.
+
+All in one place. All named. All clean.
+
+It sounds small. But when you're debugging at 1 a.m., knowing where the buttons live saves you from losing your mind.
+
+---
+
+### The Dashboard — When Status Became Visible
+
+"My Pairs" used to be a wall of text.
+
+Now it's a dashboard.
+
+Each pair shows its source, destination, filter, schedule, and whether it's active or paused.
+
+Below each pair: two buttons.
+Play/Pause. Delete.
+
+One tap to stop. One tap to resume. One tap to remove forever.
+
+No IDs to remember.
+No commands to type.
+No guessing.
+
+I stared at it after building it and thought:
+this is what I wanted from the start.
+
+---
+
+### The Limit — Four Pairs, No More
+
+I added a ceiling.
+
+Four pairs maximum.
+
+Not because the system can't handle more — but because limits are a form of design.
+
+When you hit the wall, the bot tells you.
+It doesn't crash. It doesn't silently fail.
+
+It says: "You're full. Delete something first."
+
+That felt responsible.
+
+---
+
+### The Gatekeeper Gets Quieter
+
+The middleware used to be paranoid.
+
+It checked every message against a whitelist of commands.
+If your text didn't match, you were blocked.
+
+That made sense when everything was commands.
+
+Now, with buttons, most user text is FSM input — session strings, channel names, replacement links.
+
+So I told the Gatekeeper to relax.
+
+If the message starts with `/`, check it.
+If it doesn't, let it through.
+
+The session check moved into the handlers themselves.
+The "Create Pair" button checks for a valid session before starting.
+
+Simpler. Cleaner. Less paranoid.
+
+---
+
+### Confirmations — Making Destruction Intentional
+
+Delete Pair now asks:
+"Are you sure?"
+
+Delete All asks:
+"This will remove everything. Are you sure?"
+
+Two-step destruction. No accidents.
+
+It's not about doubting the user.
+It's about respecting the weight of the action.
+
+---
+
+### What Changed Inside
+
+This wasn't a feature.
+
+It was a philosophy shift.
+
+Commands are developer-facing. Buttons are user-facing.
+
+The bot stopped speaking terminal and started speaking human.
+
+And honestly? The code got smaller.
+Handlers import keyboards. Keyboards define choices. Callbacks route decisions.
+
+Three layers. One flow. Zero typing.
+
+---
+
+### Status
+
+The bot doesn't ask you to remember commands anymore.
+
+It just shows you what you can do.
+
+And that's the difference between a tool and a product.
+
+
+
+## The Great Refactor — When the Organism Grew New Organs
+
+Still Valentine's Day. The generator is still running.
+
+I looked at the handler file — 336 lines, one file, every flow crammed together — and realized the Mouth had grown too large for its body.
+
+Time to operate.
+
+---
+
+### The Split — Four Mouths Instead of One
+
+I took the scalpel to `handlers.py` and divided it into four modules.
+
+`menu.py` — the front door. `/start`, main menu, delete-all.
+`pairs.py` — the factory floor. Create, toggle, delete.
+`session.py` — the locksmith. Session upload.
+`utils.py` — shared tools. Render helpers that everyone borrows.
+
+Each one owns its own Router. Each one only knows what it needs to know.
+
+The old file? Deleted. No ceremony.
+
+It felt like cleaning out a closet that had been bothering me for weeks.
+
+---
+
+### The Resolver — Teaching the Brain to Read Addresses
+
+The bot used to be dumb about input.
+
+You had to type a clean username. No links. No forwards. No invite hashes.
+
+Now the Brain has a new module: `resolver.py`.
+
+It reads everything:
+- `@username`
+- `t.me/channel`
+- `t.me/+invite_hash` (private invites)
+- `t.me/c/12345/50` (private post links)
+- `t.me/channel/50` (public post links with message IDs)
+- Forwarded messages (extract chat ID directly)
+- Raw numeric IDs
+
+One function. Pure logic. No network calls.
+
+It returns a clean dict: identifier, kind, invite hash, message ID.
+
+The Mouth calls it. The Nervous System acts on it. The Brain stays pure.
+
+That separation felt right.
+
+---
+
+### Private Channels — When the Eyes Learned to Knock
+
+Before this, private channels were invisible.
+
+You couldn't copy from a channel you joined via invite link.
+
+Now the Eyes can knock on doors.
+
+`join_channel(invite_hash)` — sends the invite request, joins the channel, returns the numeric ID.
+`resolve_entity(identifier)` — takes a username or ID and resolves it to a Telegram entity.
+
+The Nervous System orchestrates: parse the input, detect if it's an invite, tell the Eyes to join, get the numeric ID back, store it in the Vault.
+
+All transparent to the user. They paste a link. The bot handles the rest.
+
+---
+
+### Start From Message — Picking Up Where History Left Off
+
+This one was the user's request. And it's elegant.
+
+When creating a scheduled pair, after choosing the interval, the bot now asks:
+
+"Want to start from a specific message?"
+
+You send a link — `t.me/channel/50` — and the bot extracts message ID 50.
+
+Then it backfills. Fetches every message from #50 onward, applies the filter, sends them to the destination. One per second. Patient.
+
+Instant mode doesn't get this option. Because instant is about the future, not the past.
+
+The database stores `start_from_msg_id`. The FSM has a new state. The backfill runs as an async task so it doesn't block anything.
+
+It felt like giving the bot a memory.
+
+---
+
+### Media Cache — Keeping References Fresh
+
+Scheduled reposts have a hidden problem.
+
+Telegram file references expire. If you queue a media message and flush it 8 hours later, the reference might be dead.
+
+So I built `MediaCache`. It lives in `services/media_cache.py`.
+
+Simple concept: store message references keyed by pair ID. Evict anything older than 24 hours. Clear on flush or cancel.
+
+It's not fancy. But it prevents the ghost messages — the ones that silently fail at 3 a.m. because the file reference went stale.
+
+---
+
+### The Logs Button — When the Bot Learned to Talk About Itself
+
+The terminal is fine for developers.
+
+But the user can't see the terminal.
+
+So I gave the bot a mirror.
+
+`utils/log_buffer.py` — a circular buffer handler attached to Python's root logger. Stores the last 100 log entries.
+
+New "Logs" button on the main menu. Tap it, see the last 25 entries. Timestamp, level, module, message. Everything that used to scroll past in the terminal, now visible in Telegram.
+
+Refresh button to update. Back button to return.
+
+It follows every architecture rule: callback-only, keyboard from `keyboards.py`, handler in its own module.
+
+The bot can now explain what it's doing without you asking the terminal.
+
+---
+
+### What Changed Inside
+
+This wasn't one feature. It was six.
+
+Handler split. Resolver. Private channels. Start-from-message. Media cache. Logs.
+
+Each one small. Each one modular. Each one following the rules.
+
+The codebase is bigger now. But it feels lighter.
+
+Because every file has one job. Every module knows its place. Every function justifies its existence.
+
+---
+
+### Status
+
+The organism grew six new organs today.
+
+And it didn't reject any of them.
+
+
+
+## Phase 4.1 — Teaching the Bot to Survive Itself
+
+Still here. Still building.
+
+The features were done. The bot could repost, filter, schedule, backfill. It worked.
+
+But "works" and "survives" are different things.
+
+I'd been ignoring it — the quiet anxiety of what happens when something goes wrong at 3 a.m. and nobody is watching.
+
+So I stopped building forward and started building inward.
+
+---
+
+### The Error Counter — When Silence Became Dangerous
+
+Before this, a failing pair just... failed. Silently. Over and over.
+
+No count. No limit. No consequence.
+
+The bot would try to send to a deleted channel a hundred times and never once think to stop.
+
+That scared me.
+
+So I gave every pair a heartbeat monitor.
+
+`error_count`. `status`.
+
+Five failures in a row? The pair disables itself. Status flips to `error`. The user gets notified.
+
+Zero failures? Counter resets. Like nothing happened.
+
+It's not smart. It's just aware.
+
+And awareness is the difference between a tool and a system.
+
+---
+
+### FloodWait — When Telegram Says "Slow Down"
+
+Telegram rate limits aren't bugs. They're boundaries.
+
+But the bot didn't understand boundaries. It just threw errors and moved on.
+
+Now `send_message` returns a structured result — not just success or failure, but *why*.
+
+Wait time. Retry count. Detail.
+
+If the wait is under 5 minutes, it sleeps and tries again. Up to 3 times.
+
+If it's longer, it gives up gracefully and tells the user.
+
+That felt like teaching the bot patience.
+
+---
+
+### Duplicates — When the Same Message Arrived Twice
+
+This one was sneaky.
+
+Telegram sometimes delivers the same event more than once. Or a backfill overlaps with a live listener.
+
+Without a check, the bot would repost the same message twice. Three times. More.
+
+So I built a tracker. In-memory. Per pair. LRU eviction at 500 entries.
+
+Before every repost: "Have I seen this before?"
+
+If yes, skip. Log it. Move on.
+
+Simple guard. Massive impact.
+
+---
+
+### The Preview — When "Are You Sure?" Actually Mattered
+
+Before today, creating a pair was a one-way trip.
+
+Source. Destination. Filter. Schedule. Done.
+
+No review. No confirmation. No last chance to notice a typo.
+
+Now there's a preview step.
+
+The bot shows everything — source, destination, filter mode, schedule, start message — and asks one question:
+
+"Confirm?"
+
+Two buttons. Confirm. Cancel.
+
+It's not about doubting the user. It's about respecting the commitment.
+
+Because once a listener starts, it's watching. And what it watches matters.
+
+---
+
+### file_id Cache — Remembering What Was Already Sent
+
+Telegram gives you a `file_id` when you upload media. Use it again, and you skip the upload entirely.
+
+But the bot was forgetting them.
+
+Every scheduled flush re-uploaded the same photos. Wasteful. Slow.
+
+Now the MediaCache remembers. Seven days of file_id references. Keyed by the original media's unique ID.
+
+Photo already sent? Use the cached file_id.
+
+No re-upload. No wasted bandwidth. Just memory doing its job.
+
+---
+
+### The Dashboard Evolved — Making Health Visible
+
+The main menu was honest before. Now it's transparent.
+
+Pair count. Active count. Error count.
+
+If two pairs are broken, you see it immediately: `Reposting: ON (2 with errors)`.
+
+Each pair in the list now shows its status badge — `[Active]`, `[Paused]`, `[Error]`.
+
+Error counts visible per pair.
+
+Session status shown. Upload button hidden when unnecessary.
+
+The bot doesn't hide its problems anymore.
+
+That's maturity.
+
+---
+
+### What Changed Inside
+
+This phase wasn't about features. It was about responsibility.
+
+The bot can now:
+- Count its own failures
+- Disable itself before it causes damage
+- Wait when Telegram says wait
+- Ignore what it's already seen
+- Ask before committing
+- Remember what it's already uploaded
+- Show its own health status
+
+None of these are exciting.
+
+All of them are necessary.
+
+---
+
+### Status
+
+The organism learned self-preservation today.
+
+Not the dramatic kind. The quiet kind.
+
+The kind where you stop running when your legs hurt instead of pretending they don't.
+
+---
+
+### The Gatekeeper Gets Specific — Admin Permissions
+
+Not everyone should see everything.
+
+The logs were open. Anyone who tapped the button could see internal state, module names, error traces.
+
+That felt wrong.
+
+So I added a gate.
+
+`ADMIN_IDS` in `config.py`. A simple list. If your ID isn't on it, the Logs button doesn't exist for you. If you somehow trigger the callback anyway, you get denied.
+
+The keyboard itself adapts. Admin sees four buttons. Non-admin sees three. No confusion. No temptation.
+
+It's a small change. But it draws a line between users and operators.
+
+And that line matters.

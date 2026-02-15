@@ -6,18 +6,20 @@ Uses Pydantic to validate that all required keys exist at startup.
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
 
+ADMIN_IDS: list[int] = [8526011565]
+
 class Settings(BaseSettings):
     """
-    Validates environment variables. 
+    Validates environment variables.
     If a variable is missing, the 'Skeleton' won't boot.
     """
-    # Telegram Bot API 
+    # Telegram Bot API
     BOT_TOKEN: SecretStr
-    
-    # Telegram App API 
+
+    # Telegram App API
     API_ID: int
     API_HASH: str
-    
+
     # Database Configuration
     DATABASE_URL: str = "sqlite+aiosqlite:///data/reposter.db"
 

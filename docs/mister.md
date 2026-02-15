@@ -1,4 +1,4 @@
-# MISTER.md — Developer Journal & Progress Log
+# MISTER.MD — Developer Journal & Progress Log
 
 ## Phase 0: Setup & Prep
 **Status: COMPLETED**
@@ -345,4 +345,169 @@
 ### Status
 - **Current State:** **Content Filtering Architecture BUILT & INTEGRATED.** The bot now "cleans" messages automatically based on user-defined rules.
 - **Milestone:** Successfully transitioned the project to a **Version-Controlled Database** state and established a stable processing pipeline for albums and text.
-- **Next Task:** Phase 3.4 - Stability & Error Handling (Addressing the "Signal Ghost" timeouts and adding retry logic).
+- **Next Task:** Phase 3.4 - Scheduling (Time-based repost intervals).
+
+
+### 3.4 The Scheduler (Time-Based Reposting)
+**Progress:**
+- **Schema Extension:** Added `schedule_interval` column (Integer, nullable) to `RepostPair` via Alembic migration. `None` or `0` means instant; any positive value is the interval in minutes.
+- **FSM Evolution:** Extended `CreatePair` states with `waiting_for_schedule`, making pair creation a 5-step flow: Source -> Destination -> Filter -> (Replacement) -> Schedule.
+- **The Schedule Menu:** Built a 10-option inline keyboard in the Mouth offering: Instant, 5m, 15m, 30m, 1hr, 2hr, 4hr, 8hr, 12hr, and 24hr intervals.
+- **The Queue System:** Implemented an in-memory `schedule_queue` in the Nervous System (`RepostService`). Messages arriving on a scheduled pair are held in a dictionary keyed by `pair_id`.
+- **The Flush Timer:** Each pair gets its own `asyncio.Task` that sleeps for the configured interval, then bulk-sends all queued messages at once.
+- **Timer Lifecycle:** Timers are automatically cancelled when pairs are stopped, deleted, or deactivated — preventing ghost flushes.
+- **Librarian Update:** Extended `add_repost_pair` in the Repository to accept and store `schedule_interval`.
+- **View Pairs Update:** `/viewpairs` now shows the schedule setting alongside status, source, and destination.
+
+**Bugs / Issues:**
+- None encountered during implementation. The architecture held perfectly — schedule logic sits cleanly in the Service layer, the Vault just stores the interval, and the Mouth only asks the question.
+
+**Fixes / Solutions:**
+- N/A — Clean implementation built on top of the existing architecture without modifying core structure.
+
+---
+
+### Status
+- **Current State:** **Scheduling Architecture BUILT & INTEGRATED.** The bot now supports both real-time and interval-based reposting.
+- **Milestone:** Users can choose exactly when their messages get forwarded — from instant to once-a-day.
+- **Next Task:** Phase 3.5 - Callback-Only UI (Replace all slash commands with inline buttons).
+
+
+### 3.5 The Callback-Only UI (Button-Driven Interface)
+**Progress:**
+- **Slash Command Purge:** Removed all slash commands except `/start`. Every user action now flows through inline callback buttons — no more typing commands.
+- **Keyboard Separation:** Created `bot/keyboards.py` to house all `InlineKeyboardBuilder` definitions. The Mouth no longer builds its own buttons; it imports them from the button rack. Architecture stays clean.
+- **Main Menu:** `/start` now displays a 4-button dashboard: Upload Session, Create Pair, My Pairs, Delete All. This is the single entry point for the entire bot.
+- **Pairs Dashboard:** "My Pairs" renders a live status view showing each pair's source, destination, filter mode, schedule interval, and active/paused state. Each pair has Play/Pause and Delete toggle buttons inline.
+- **4-Pair Limit:** Enforced at the Create Pair callback — if the user already has 4 pairs, they see a "Limit Reached" message with a link to manage existing pairs.
+- **Session Gating:** Added `user_has_session()` to the Nervous System (`RepostService`). The Create Pair button checks session existence before starting the flow, replacing the old middleware-based gating for protected actions.
+- **Middleware Simplification:** `SessionGuardMiddleware` now only blocks unrecognized slash commands. Non-command text passes freely for FSM state inputs (session strings, channel names, replacement links).
+- **Confirmation Dialogs:** Delete Pair and Delete All actions require explicit confirmation via a second button press before executing.
+- **Cancel/Back Navigation:** Every step in every flow includes a Cancel or Back button returning the user to the appropriate parent screen.
+
+**Bugs / Issues:**
+- None. The callback system integrated cleanly because the existing FSM states and service methods were already callback-compatible from Phase 3.4.
+
+**Fixes / Solutions:**
+- N/A — Clean migration from command-based to callback-based interface.
+
+---
+
+### Status
+- **Current State:** **Callback-Only UI COMPLETE.** The bot is now fully button-driven with zero reliance on typed commands.
+- **Milestone:** Users never need to type a command again. Every interaction is one tap away.
+- **Next Task:** Phase 4.0 - Modular Refactor & Feature Extension.
+
+
+### 4.0 The Great Refactor — Modular Architecture & Feature Extension
+**Progress:**
+
+**Code Structure Overhaul:**
+- **Handler Split:** Broke the monolithic `bot/handlers.py` (336 lines) into four focused modules: `bot/handlers/menu.py` (entry point + delete-all), `bot/handlers/pairs.py` (create flow + toggle + delete), `bot/handlers/session.py` (session upload), `bot/handlers/utils.py` (shared render helpers). Each module owns its own `Router`.
+- **Routers Update:** `bot/routers.py` now imports and registers all four handler routers plus the new logs router.
+
+**Channel Input Resolver (`core/repost/resolver.py`):**
+- New Brain module: pure-function channel parser. Zero network calls.
+- Accepts: `@username`, `t.me/channel`, `t.me/+invite_hash`, `t.me/joinchat/hash`, `t.me/c/channel_id/msg_id`, public post links (`t.me/channel/50`), numeric IDs, forwarded messages.
+- Returns normalized dict: `{identifier, kind, invite_hash, msg_id}`.
+- Replaces the old `sanitize_channel_id` function with far richer parsing.
+
+**Private Channel Support:**
+- **Eyes Extension:** Added `join_channel(invite_hash)` and `resolve_entity(identifier)` to `TelethonProvider`. The Eyes can now join private channels via invite links and resolve usernames/IDs to Telegram entities.
+- **Nervous System Orchestration:** `resolve_channel_for_pair()` in `RepostService` orchestrates: parse input -> if invite, join channel -> resolve to numeric ID -> store in Vault. Private channels now fully supported.
+- **Fetch Messages:** Added `fetch_messages_from()` to `TelethonProvider` for backfilling historical messages.
+
+**Start-From-Message Feature:**
+- **Schema Extension:** Added `start_from_msg_id` column (Integer, nullable) to `RepostPair` via Alembic migration.
+- **FSM Extension:** New state `CreatePair.waiting_for_start_message` — appears only when schedule interval > 0.
+- **Flow:** After selecting a scheduled interval, user is prompted to optionally send a post link (e.g., `t.me/channel/50`) or tap Skip. If provided, backfill task runs asynchronously, fetching and forwarding historical messages.
+- **Instant mode lockout:** This feature is only available for scheduled pairs. Instant mode skips directly to finalization.
+
+**Media Caching (`services/media_cache.py`):**
+- New service module: `MediaCache` stores message references keyed by `pair_id` with automatic stale eviction (24h max age).
+- Prevents stale Telegram file references in the scheduled queue.
+- Integrated into `_execute_repost` for scheduled pairs and cleared on flush/cancel.
+
+**Logs Feature (`utils/log_buffer.py` + `bot/handlers/logs.py`):**
+- `BufferedLogHandler`: circular buffer (100 entries) attached to Python's root logger. Captures everything printed to terminal.
+- New "Logs" button in main menu. Displays last 25 log entries with timestamp, level, logger name, and message.
+- Refresh button for live updates. Follows architecture rules: callback-only, keyboard from `keyboards.py`.
+
+**UI Text Cleanup:**
+- Removed Markdown bold markers from all user-facing text (cleaner in Telegram's default parse mode).
+- Consistent layout across all handler modules.
+- Pair creation prompts now list all accepted input formats.
+
+**Bugs / Issues:**
+- None — all modules integrate cleanly. The refactor preserved all existing functionality while adding new capabilities.
+
+**Fixes / Solutions:**
+- N/A — Clean modular architecture built on top of existing foundation.
+
+---
+
+### Status
+- **Current State:** **Phase 4.0 COMPLETE.** Modular handler architecture, channel resolver, private channel support, start-from-message, media caching, and logs feature all integrated.
+- **Milestone:** The codebase is now production-grade modular. Private channels supported. Scheduled pairs can backfill from any message.
+- **Next Task:** Phase 4.1 - Error resilience, retry logic, signal ghost timeouts.
+
+
+## Phase 4.1: Reliability & Safety Improvements
+**Status: COMPLETED**
+
+### 4.1.1 Pair Health Monitoring & Error Auto-Disable
+**Progress:**
+- Added `error_count` (Integer, default 0) and `status` (String, default "active") columns to `RepostPair` via Alembic migration.
+- Implemented `increment_error_count()` and `reset_error_count()` in `UserRepository`.
+- Status enum: `active`, `paused`, `error`. Pairs auto-disable after 5 consecutive failures (`MAX_ERRORS_BEFORE_DISABLE`).
+- `set_pair_status()` method in repository for explicit status changes.
+- Error count resets to 0 on successful repost.
+
+### 4.1.2 FloodWait Protection
+**Progress:**
+- Enhanced `send_message` in `TelethonProvider` to catch `FloodWaitError`.
+- Returns structured result dict: `{ok, error, wait_seconds, detail, sent_id}`.
+- Retry loop with up to 3 attempts (`FLOOD_WAIT_MAX_RETRY`), skipping waits longer than 300 seconds.
+- `RepostService.set_bot()` called at startup to enable user notifications via bot for FloodWait events.
+
+### 4.1.3 Duplicate Detection
+**Progress:**
+- In-memory `DuplicateTracker` using message ID + media hash.
+- LRU cache with 500-entry limit per pair (`DEDUP_CACHE_SIZE`).
+- Checked before every repost; duplicates are silently skipped and logged.
+
+### 4.1.4 Confirmation Preview
+**Progress:**
+- Replaced `_finalize_pair()` with `_show_preview()` — shows pair summary (source, dest, filter, schedule, start message) before activation.
+- New FSM state: `CreatePair.waiting_for_confirmation`.
+- New keyboard: `confirm_pair_kb()` with Confirm and Cancel buttons.
+- `confirm_pair` callback handler creates the pair only after explicit confirmation.
+
+### 4.1.5 Media Cache Enhancement (file_id Caching)
+**Progress:**
+- Extended `MediaCache` with `store_file_id()`, `get_file_id()`, and `extract_media_key()` methods.
+- 7-day TTL for file_id entries vs 24-hour TTL for message bundles.
+- Keys use format `photo:{id}` or `doc:{id}` for Telegram media objects.
+
+### 4.1.6 UI Enhancements
+**Progress:**
+- Main menu now shows error count: `Reposting: ON (2 with errors)`.
+- Pairs view shows `[Active]`, `[Paused]`, or `[Error]` status badges per pair.
+- Error count displayed per pair when > 0.
+- "Upload Session" button hidden when session already exists; session status shown.
+
+---
+
+### Status
+- **Current State:** **Phase 4.1 COMPLETE.** The bot is now resilient, safe, and transparent about its operational health.
+- **Milestone:** Auto-disabling broken pairs, FloodWait protection, duplicate prevention, and confirmation previews all operational.
+- **Next Task:** Phase 5 - Performance optimization, multi-user scaling, and advanced scheduling.
+
+
+### 4.1.7 Admin Permissions System
+**Progress:**
+- Added `ADMIN_IDS` list to `config.py` with initial admin: `8526011565`.
+- Logs callback handler now checks `callback.from_user.id in ADMIN_IDS` before displaying logs. Non-admins receive "Access denied" alert.
+- `main_menu_kb()` now accepts `is_admin` parameter. The "Logs" button is only rendered for admin users.
+- All callers of `main_menu_kb()` updated to pass `is_admin` (render_main_menu, confirm_pair, session upload).
+- README.md comprehensively rewritten to document all features, architecture, permissions, database schema, FSM states, usage flow, and design constants.
