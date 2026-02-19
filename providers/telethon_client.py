@@ -106,17 +106,28 @@ class TelethonProvider:
             logger.error(f"Failed to resolve '{identifier}': {e}")
             return None
 
-    async def fetch_messages_from(self, user_id: int, source_id: str, from_msg_id: int, limit: int = 100):
+    
+    async def fetch_messages_from(self, user_id: int, source_id: str, from_msg_id: int, limit: int = 1):
         client = self.active_clients.get(user_id)
         if not client or not client.is_connected(): return []
 
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
-            messages = await client.get_messages(target, min_id=from_msg_id - 1, limit=limit)
-            return list(reversed(messages)) if messages else []
+            
+            # Mister, we change 'min_id' to 'offset_id' and set 'reverse=True'
+            # This forces Telethon to start at 19 and look FORWARD to 20, 21...
+            # instead of starting at the newest and looking back.
+            messages = await client.get_messages(
+                target, 
+                offset_id=from_msg_id, 
+                limit=limit, 
+                reverse=True
+            )
+            return list(messages) if messages else []
         except Exception as e:
             logger.error(f"Fetch failed for {source_id}: {e}")
             return []
+
 
     async def send_message(self, user_id: int, destination: str | int, message: any) -> dict:
         client = self.active_clients.get(user_id)
@@ -150,3 +161,5 @@ class TelethonProvider:
                 return True
             except: pass
         return False
+
+
