@@ -32,6 +32,7 @@ class RepostService:
         self.album_cache = {}
         self.schedule_queue = {}
         self.schedule_timers = {}
+        self.backfill_tasks = {}
         self.media_cache = MediaCache()
         self.file_id_cache = {}
         self._dedup_seen = defaultdict(dict)
@@ -86,12 +87,14 @@ class RepostService:
             pairs = await repo.get_user_pairs(user_id)
             for p in pairs:
                 self._cancel_schedule_timer(p.id)
+                self._cancel_backfill_task(p.id)
                 self.schedule_queue.pop(p.id, None)
                 self._dedup_seen.pop(p.id, None)
             return await repo.delete_all_user_pairs(user_id)
 
     async def delete_single_pair(self, user_id: int, pair_id: int) -> bool:
         self._cancel_schedule_timer(pair_id)
+        self._cancel_backfill_task(pair_id)
         self.schedule_queue.pop(pair_id, None)
         self._dedup_seen.pop(pair_id, None)
         async with async_session() as db_session:
@@ -100,6 +103,7 @@ class RepostService:
 
     async def deactivate_pair(self, user_id: int, pair_id: int) -> bool:
         self._cancel_schedule_timer(pair_id)
+        self._cancel_backfill_task(pair_id)
         self.schedule_queue.pop(pair_id, None)
         async with async_session() as db_session:
             repo = UserRepository(db_session)
@@ -165,12 +169,13 @@ class RepostService:
 
         # Rule 7: Pass all required arguments to the backfill task
         if start_from_msg_id and schedule_interval and schedule_interval > 0:
-            asyncio.create_task(
+            task = asyncio.create_task(
                 self._backfill_from_message(
                     user_id, source, destination, start_from_msg_id, 
                     filter_type, replacement_link, schedule_interval, new_pair.id
                 )
             )
+            self.backfill_tasks[new_pair.id] = task
             
 
     async def _backfill_from_message(self, user_id, source, destination, from_msg_id, filter_type, replacement_link, interval_minutes, pair_id):
@@ -180,6 +185,14 @@ class RepostService:
         current_id = from_msg_id
         
         while True:
+            # Check if pair still exists and is active before fetching
+            async with async_session() as db_session:
+                repo = UserRepository(db_session)
+                pair = await repo.get_pair_by_id(pair_id)
+                if not pair or not pair.is_active or pair.status == "error":
+                    logger.info(f"Backfill for Pair #{pair_id} stopped (not active/deleted).")
+                    break
+
             # Rule 6: Fetch only ONE message to ensure we don't skip logic
             messages = await self.telethon.fetch_messages_from(user_id, source, current_id, limit=1)
             
@@ -245,6 +258,17 @@ class RepostService:
         return False
 
     async def _send_with_retry(self, user_id: int, destination: str, message, pair_id: int = None) -> dict:
+        msg_list = message if isinstance(message, list) else [message]
+        media_keys = {}
+        for m in msg_list:
+            key = self.media_cache.extract_media_key(getattr(m, 'media', None))
+            if key:
+                cached_id = self.media_cache.get_file_id(key)
+                if cached_id:
+                    m.cached_file_id = cached_id
+                else:
+                    media_keys[id(m)] = key
+
         for attempt in range(FLOOD_WAIT_MAX_RETRY + 1):
             result = await self.telethon.send_message(user_id, destination, message)
 
@@ -253,6 +277,15 @@ class RepostService:
                     async with async_session() as db_session:
                         repo = UserRepository(db_session)
                         await repo.reset_error_count(pair_id)
+                # Store new file ids
+                sent_msg = result.get("message")
+                if sent_msg:
+                    sent_list = sent_msg if isinstance(sent_msg, list) else [sent_msg]
+                    for idx, o_msg in enumerate(msg_list):
+                        if id(o_msg) in media_keys and idx < len(sent_list):
+                            sent_media = getattr(sent_list[idx], 'media', None)
+                            if sent_media:
+                                self.media_cache.store_file_id(media_keys[id(o_msg)], sent_media)
                 return result
 
             if result.get("error") == "flood_wait":
@@ -273,6 +306,7 @@ class RepostService:
             if new_count >= MAX_ERRORS_BEFORE_DISABLE:
                 await repo.deactivate_pair_as_error(pair_id)
                 self._cancel_schedule_timer(pair_id)
+                self._cancel_backfill_task(pair_id)
                 await self._notify_user(user_id, f"Pair #{pair_id} disabled after {new_count} errors.")
 
     async def _handle_new_message(self, message, user_id):
@@ -289,7 +323,13 @@ class RepostService:
         await self._execute_repost(user_id, [message])
 
     async def _process_album_after_delay(self, gid, user_id):
-        await asyncio.sleep(1.0)
+        # Implement a sliding window timeout. If the length changes, wait again.
+        while True:
+            count = len(self.album_cache.get(gid, []))
+            await asyncio.sleep(1.0)
+            if count == len(self.album_cache.get(gid, [])):
+                break
+                
         messages = self.album_cache.pop(gid, [])
         if messages:
             await self._execute_repost(user_id, messages)
@@ -354,6 +394,10 @@ class RepostService:
         timer = self.schedule_timers.pop(pair_id, None)
         if timer and not timer.done(): timer.cancel()
         self.media_cache.clear_pair(pair_id)
+
+    def _cancel_backfill_task(self, pair_id: int):
+        task = self.backfill_tasks.pop(pair_id, None)
+        if task and not task.done(): task.cancel()
 
     async def recover_all_listeners(self):
         async with async_session() as db_session:

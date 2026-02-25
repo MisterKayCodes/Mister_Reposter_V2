@@ -112,6 +112,12 @@ class UserRepository:
         )
         return result.scalars().all()
 
+    async def get_pair_by_id(self, pair_id: int):
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        return result.scalar_one_or_none()
+
     async def get_all_active_users_with_pairs(self):
         # Optimized for performance
         query = select(RepostPair.user_id).where(RepostPair.is_active == True).distinct()

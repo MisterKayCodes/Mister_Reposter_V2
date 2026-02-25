@@ -8,8 +8,12 @@ import re
 class MessageCleaner:
     # Rule 11: Pre-compile regex for speed and precision
     # This specifically targets TG links and usernames without swallowing surrounding punctuation
-    _LINK_PATTERN = re.compile(
+    _REMOVE_PATTERN = re.compile(
         r'(?:https?://)?t\.me/(?:joinchat/|\+)?[\w_-]+/?(?:\d+)?|@[\w_]+', 
+        re.IGNORECASE
+    )
+    _REPLACE_PATTERN = re.compile(
+        r'(?:https?://)?t\.me/(?:joinchat/|\+)?[\w_-]+/?(?:\d+)?', 
         re.IGNORECASE
     )
 
@@ -25,12 +29,12 @@ class MessageCleaner:
         
         # Rule 3: Single Responsibility - Handle matching in one pass
         if mode == 1:
-            # Delete matches
-            cleaned_text = MessageCleaner._LINK_PATTERN.sub('', cleaned_text)
+            # Delete matches (including @usernames)
+            cleaned_text = MessageCleaner._REMOVE_PATTERN.sub('', cleaned_text)
         elif mode == 2:
-            # Swap matches for custom link
+            # Swap matches for custom link (exclude @usernames to avoid spammy looking quotes)
             rep = replacement if replacement else ""
-            cleaned_text = MessageCleaner._LINK_PATTERN.sub(rep, cleaned_text)
+            cleaned_text = MessageCleaner._REPLACE_PATTERN.sub(rep, cleaned_text)
 
         # Rule 14: Final Polish
         # Remove triple+ newlines, double spaces, and lead/trail whitespace

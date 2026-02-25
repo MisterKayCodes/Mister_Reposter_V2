@@ -45,10 +45,16 @@ async def cb_upload_session(callback: types.CallbackQuery, state: FSMContext):
 @router.message(SessionUpload.waiting_for_input)
 async def process_session_input(message: types.Message, state: FSMContext):
     await message.answer("Processing session... please wait.")
-    await session_service.handle_session_input(message)
+    success = await session_service.handle_session_input(message)
     await state.clear()
     is_admin = message.from_user.id in ADMIN_IDS
-    await message.answer(
-        "Session linked successfully!",
-        reply_markup=main_menu_kb(has_session=True, is_admin=is_admin)
-    )
+    if success:
+        await message.answer(
+            "Session linked successfully! Returning to menu.",
+            reply_markup=main_menu_kb(has_session=True, is_admin=is_admin)
+        )
+    else:
+        await message.answer(
+            "Session setup failed. Please try again from the menu.",
+            reply_markup=main_menu_kb(has_session=False, is_admin=is_admin)
+        )

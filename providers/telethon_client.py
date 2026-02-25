@@ -9,6 +9,7 @@ from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest
 from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.sessions import StringSession
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +19,15 @@ class TelethonProvider:
         self.api_hash = api_hash
         self.active_clients = {}
 
+    def _get_session(self, session_data):
+        if isinstance(session_data, str) and not session_data.endswith('.session'):
+            return StringSession(session_data)
+        return session_data
+
     async def validate_session(self, session_data) -> bool:
+        session_obj = self._get_session(session_data)
         try:
-            async with TelegramClient(session_data, self.api_id, self.api_hash) as client:
+            async with TelegramClient(session_obj, self.api_id, self.api_hash) as client:
                 return await asyncio.wait_for(client.is_user_authorized(), timeout=10)
         except Exception as e:
             logger.error(f"Telethon Validation Error: {e}")
@@ -33,7 +40,8 @@ class TelethonProvider:
             return
 
         try:
-            client = TelegramClient(session_data, self.api_id, self.api_hash)
+            session_obj = self._get_session(session_data)
+            client = TelegramClient(session_obj, self.api_id, self.api_hash)
             
             for attempt in range(2):
                 try:
@@ -140,9 +148,18 @@ class TelethonProvider:
             # Mister, if the engine sends a list of messages (an album), 
             # we use send_file with the list of media.
             if isinstance(message, list):
-                sent = await client.send_file(target, [m.media for m in message if m.media], caption=message[0].message)
+                media_list = []
+                for m in message:
+                    if hasattr(m, "cached_file_id") and m.cached_file_id:
+                        media_list.append(m.cached_file_id)
+                    elif getattr(m, "media", None):
+                        media_list.append(m.media)
+                sent = await client.send_file(target, media_list, caption=message[0].message)
             else:
-                sent = await client.send_message(target, message)
+                if hasattr(message, "cached_file_id") and message.cached_file_id:
+                    sent = await client.send_file(target, message.cached_file_id, caption=getattr(message, "message", ""))
+                else:
+                    sent = await client.send_message(target, message)
                 
             return {"ok": True, "message": sent}
         except FloodWaitError as e:

@@ -9,9 +9,9 @@ A "set-and-forget" Telegram bot that connects to your personal Telegram account 
 ### Channel Reposting
 - Configure up to **4 repost pairs** (source -> destination)
 - Supports **public and private channels** (via invite links)
-- Handles **all media types**: text, photos, videos, documents, and albums
-- **Album grouping**: media groups are bundled and sent as a single album, not separate messages
-- **Content filters**: keep original links, remove all links, or replace links with your own
+- **Handles all media types**: text, photos, videos, documents, and dynamic albums
+- **Smart Album Grouping**: implements a sliding-window timeout (1.0s buffer) that waits dynamically for large media chunks to finish downloading so they are bundled as a perfect single album
+- **Intelligent content filters**: keep original links, optionally remove links (now intelligently ignoring `@usernames`), or replace specified `t.me` or `http` links with your custom tracker link
 
 ### Scheduling
 - **Instant mode**: messages are forwarded in real time as they arrive
@@ -25,7 +25,8 @@ A "set-and-forget" Telegram bot that connects to your personal Telegram account 
 - **Duplicate detection**: in-memory tracker using message ID + media hash (LRU cache, 500 entries per pair) prevents double-posting
 - **Confirmation preview**: shows a full summary of source, destination, filter, schedule, and start message before activating a new pair
 - **Media cache**: stores message references for scheduled reposts with 24-hour eviction to prevent stale file references
-- **file_id caching**: remembers Telegram file IDs for 7 days to avoid re-uploading the same media
+- **file_id caching**: strictly maps and reuses Telegram `file_id` references for 7 days to avoid repeatedly downloading/re-uploading identical media, saving immense bandwidth
+- **Backfill Guardians**: background daemon threads self-terminate gracefully if a pair is deleted or paused, to prevent zombie processes and API abuse limit bans
 - **Auto-recovery**: all active listeners resume automatically on bot restart
 
 ### Permissions
