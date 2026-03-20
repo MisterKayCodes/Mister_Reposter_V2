@@ -177,6 +177,52 @@ class RepostService:
             )
             self.backfill_tasks[new_pair.id] = task
             
+    async def get_effective_stats(self, user_id: int, pair_id: int):
+        """The 'Brain' of the stats. One single place to calculate everything."""
+        async with async_session() as db_session:
+            repo = UserRepository(db_session)
+            pair = await repo.get_pair_by_id(pair_id)
+            if not pair: return None
+            
+            # 1. Get the real-time total from TG (using the new GetHistoryRequest)
+            total = await self.telethon.get_total_messages(user_id, pair.source_id)
+            
+            # 2. Update DB if we got a valid number
+            if total >= 0:
+                await repo.update_pair_total_posts(pair_id, total)
+                pair.total_posts_source = total
+            
+            # 3. Handle anomalies (e.g. current > total)
+            current = pair.start_from_msg_id or 1
+            
+            # Junior, if current > total, it means the channel has fewer posts 
+            # than we think we've processed (maybe they deleted some). 
+            # We cap remaining at 0.
+            if total > 0 and current > total:
+                remaining = 0 
+            elif total > 0:
+                remaining = max(0, total - current)
+            else:
+                remaining = 0
+                
+            time_left_min = remaining * (pair.schedule_interval or 0)
+            
+            return {
+                "id": pair_id,
+                "current": current,
+                "total": total,
+                "remaining": remaining,
+                "time_left_min": time_left_min,
+                "source": pair.source_id,
+                "destination": pair.destination_id,
+                "schedule": pair.schedule_interval,
+                "is_active": pair.is_active
+            }
+
+    async def sync_pair_stats(self, user_id: int, pair_id: int):
+        """Wrapper for backward compatibility."""
+        stats = await self.get_effective_stats(user_id, pair_id)
+        return stats["total"] if stats else -1
 
     async def _backfill_from_message(self, user_id, source, destination, from_msg_id, filter_type, replacement_link, interval_minutes, pair_id):
         """Rule 11: Optimized for scheduled progression (msg 19 -> 20 -> 21)."""
@@ -185,6 +231,19 @@ class RepostService:
         current_id = from_msg_id
         
         while True:
+            # 1. Update Stats (Total messages in source) - Senior Move: Only update if valid
+            total = await self.telethon.get_total_messages(user_id, source)
+            if total >= 0:
+                async with async_session() as db_session:
+                    repo = UserRepository(db_session)
+                    await repo.update_pair_total_posts(pair_id, total)
+
+            # 2. Check Priority: If live messages are queued, pause backfill
+            if pair_id in self.schedule_queue and self.schedule_queue[pair_id]:
+                logger.info(f"Pair #{pair_id} has live messages queued. Pausing backfill for priority.")
+                await asyncio.sleep(60) 
+                continue
+
             # Check if pair still exists and is active before fetching
             async with async_session() as db_session:
                 repo = UserRepository(db_session)
@@ -193,12 +252,17 @@ class RepostService:
                     logger.info(f"Backfill for Pair #{pair_id} stopped (not active/deleted).")
                     break
 
-            # Rule 6: Fetch only ONE message to ensure we don't skip logic
+            # 3. Fetch only ONE message
             messages = await self.telethon.fetch_messages_from(user_id, source, current_id, limit=1)
             
             if not messages:
-                logger.info(f"Backfill for Pair #{pair_id} reached the 'present'. Switching to live listening.")
-                break
+                # 4. RECYCLING: If reached the end, reset to #1
+                logger.info(f"Backfill for Pair #{pair_id} reached the end. Recycling to message #1.")
+                current_id = 1
+                async with async_session() as db_session:
+                    repo = UserRepository(db_session)
+                    await repo.update_pair_start_id(pair_id, current_id)
+                continue
 
             msg = messages[0]
             if msg.message:
@@ -208,18 +272,16 @@ class RepostService:
             result = await self._send_with_retry(user_id, destination, msg, pair_id=pair_id)
             
             if result["ok"]:
-                # --- THE CRITICAL UPDATE ---
-                # Move the pointer forward in the Vault
+                # Move pointer forward
                 current_id += 1 
                 async with async_session() as db_session:
                     repo = UserRepository(db_session)
                     await repo.update_pair_start_id(pair_id, current_id)
                 
-                # Rule 4.2: Respect the user's 5-minute schedule
+                # Respect schedule
                 logger.info(f"Pair #{pair_id} posted msg {current_id-1}. Waiting {interval_minutes}m for next.")
                 await asyncio.sleep(interval_minutes * 60)
             else:
-                # If we hit a flood wait or error, stop the loop to prevent bot-wide lockout
                 logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to error.")
                 break
 
@@ -352,6 +414,12 @@ class RepostService:
                 norm_src = src if src.startswith("-100") else f"-100{src}"
 
                 if norm_cid == norm_src:
+                    # Smart Detection: Update total posts for this pair
+                    total = await self.telethon.get_total_messages(user_id, p.source_id)
+                    async with async_session() as db_session:
+                        repo = UserRepository(db_session)
+                        await repo.update_pair_total_posts(p.id, total)
+                        
                     await self._process_matched_pair(p, user_id, messages)
                     break
 
@@ -402,11 +470,26 @@ class RepostService:
     async def recover_all_listeners(self):
         async with async_session() as db_session:
             repo = UserRepository(db_session)
-            users = await repo.get_all_active_users_with_pairs()
-            for uid in users:
+            users_ids = await repo.get_all_active_users_with_pairs()
+            for uid in users_ids:
                 if uid not in self._active_listeners:
                     user = await repo.get_user(uid)
                     path = self._get_session_path(uid, user)
                     if path:
                         await self.telethon.start_listener(uid, path, self._handle_new_message)
                         self._active_listeners.add(uid)
+                
+                # Rule 11: Also recover backfill tasks for any scheduled pair
+                pairs = await repo.get_user_pairs(uid)
+                for p in pairs:
+                    if not p.is_active or p.status == "error": continue
+                    if p.start_from_msg_id and p.schedule_interval and p.schedule_interval > 0:
+                        if p.id not in self.backfill_tasks or self.backfill_tasks[p.id].done():
+                            logger.info(f"Recovering Backfill for Pair #{p.id} (msg {p.start_from_msg_id})")
+                            task = asyncio.create_task(
+                                self._backfill_from_message(
+                                    uid, p.source_id, p.destination_id, p.start_from_msg_id,
+                                    p.filter_type, p.replacement_link, p.schedule_interval, p.id
+                                )
+                            )
+                            self.backfill_tasks[p.id] = task

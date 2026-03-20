@@ -42,3 +42,6 @@ class RepostPair(Base):
 
     error_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(16), default="active")
+
+    # Stats tracking
+    total_posts_source: Mapped[int | None] = mapped_column(Integer, nullable=True)

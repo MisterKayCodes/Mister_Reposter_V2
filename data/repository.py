@@ -189,3 +189,14 @@ class UserRepository:
             if pair.status == "error":
                 pair.status = "active"
             await self.session.commit()
+
+    async def update_pair_total_posts(self, pair_id: int, total: int):
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.total_posts_source = total
+            await self.session.commit()
+            return True
+        return False

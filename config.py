@@ -24,7 +24,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///data/reposter.db"
 
     # Pydantic configuration to read from .env file
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        extra='ignore'
+    )
 
 # Global instance to be imported by the Skeleton (main.py)
 config = Settings()

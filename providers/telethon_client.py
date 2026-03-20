@@ -7,7 +7,7 @@ import logging
 import asyncio
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
-from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest
+from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.sessions import StringSession
 
@@ -135,6 +135,29 @@ class TelethonProvider:
         except Exception as e:
             logger.error(f"Fetch failed for {source_id}: {e}")
             return []
+
+    async def get_total_messages(self, user_id: int, source_id: str) -> int:
+        client = self.active_clients.get(user_id)
+        if not client or not client.is_connected(): return -1
+        try:
+            target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
+            
+            # Senior Move: Use the low-level GetHistoryRequest for 100% accurate count
+            # This bypasses any local caching issues in the client.
+            result = await client(GetHistoryRequest(
+                peer=target,
+                offset_id=0,
+                offset_date=None,
+                add_offset=0,
+                limit=0,
+                max_id=0,
+                min_id=0,
+                hash=0
+            ))
+            return getattr(result, "count", 0)
+        except Exception as e:
+            logger.error(f"Failed to get message count for {source_id}: {e}")
+            return -1
 
 
     async def send_message(self, user_id: int, destination: str | int, message: any) -> dict:

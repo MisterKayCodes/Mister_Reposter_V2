@@ -30,12 +30,15 @@ FILTER_LABELS = {
 def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     builder = InlineKeyboardBuilder()
     if not has_session:
-        builder.button(text="Upload Session", callback_data="upload")
-    builder.button(text="Create Pair", callback_data="create")
-    builder.button(text="My Pairs", callback_data="pairs")
+        builder.button(text="☁️ Upload Session", callback_data="upload")
+    builder.button(text="➕ Create Pair", callback_data="create")
+    builder.button(text="👥 My Pairs", callback_data="pairs")
+    builder.button(text="📊 Stats", callback_data="stats")
     if is_admin:
-        builder.button(text="Logs", callback_data="logs")
-    builder.button(text="Delete All", callback_data="delall")
+        builder.button(text="📜 Logs", callback_data="logs")
+    builder.button(text="🗑️ Delete All", callback_data="delall")
+    
+    # Adjust layout based on role and session
     if not has_session and is_admin:
         builder.adjust(1, 2, 2, 1)
     elif not has_session:
@@ -43,7 +46,7 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     elif is_admin:
         builder.adjust(2, 2, 1)
     else:
-        builder.adjust(2, 1)
+        builder.adjust(2, 1, 1)
     return builder.as_markup()
 
 
@@ -160,4 +163,21 @@ def logs_kb():
     builder.button(text="Refresh", callback_data="logs")
     builder.button(text="Back", callback_data="main")
     builder.adjust(2)
+    return builder.as_markup()
+
+
+def stats_pairs_kb(pairs):
+    builder = InlineKeyboardBuilder()
+    for p in pairs:
+        builder.button(text=f"📊 Pair #{p.id}", callback_data=f"statp_{p.id}")
+    builder.button(text="🔙 Back", callback_data="main")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def stats_detail_kb(pair_id: int):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔄 Refresh", callback_data=f"refr_{pair_id}")
+    builder.button(text="🔙 Back to Stats", callback_data="stats")
+    builder.adjust(1)
     return builder.as_markup()
