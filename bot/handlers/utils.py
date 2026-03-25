@@ -5,6 +5,7 @@ Shared render helpers used across handler modules.
 from aiogram import types
 from aiogram.exceptions import TelegramBadRequest
 from datetime import datetime
+import time
 from services.repost_engine import RepostService
 import logging
 from bot.keyboards import (
@@ -74,7 +75,16 @@ async def render_pair_stats(message: types.Message, user_id: int, pair_id: int):
                 
                 lines.append(f"📦 <b>Progress:</b> {stats['current']} / {total}")
                 lines.append(f"📥 <b>Remaining:</b> {stats['remaining']} posts")
-                lines.append(f"⏳ <b>Est. Finish:</b> {time_str}")
+                
+                next_post = stats.get("next_post")
+                if next_post:
+                    time_until = int(max(0, next_post["time"] - time.time()) / 60)
+                    next_str = format_time_left(time_until)
+                    lines.append(f"⏳ <b>Next Post In:</b> {next_str}")
+                    lines.append(f"📄 <b>Preview:</b> <code>{next_post['preview']}</code>")
+                else:
+                    lines.append(f"⏳ <b>Est. Finish:</b> {time_str}")
+                    
                 lines.append(f"♻️ <b>Recycling:</b> ON")
             elif total == 0:
                 lines.append("⚠️ <b>Source appears to be empty.</b>")

@@ -42,6 +42,8 @@ class RepostService:
         self._bot = None
         # Rule 1: Tracking state to prevent duplicate listeners
         self._active_listeners = set()
+        self.next_post_info = {}
+
 
     # Every conductor needs a baton. This connects our engine to the main bot interface
     # so we can send messages back to the users (like error alerts or status updates).
@@ -228,7 +230,8 @@ class RepostService:
                 "source": pair.source_id,
                 "destination": pair.destination_id,
                 "schedule": pair.schedule_interval,
-                "is_active": pair.is_active
+                "is_active": pair.is_active,
+                "next_post": self.next_post_info.get(pair_id)
             }
 
     async def sync_pair_stats(self, user_id: int, pair_id: int):
@@ -248,113 +251,138 @@ class RepostService:
         await asyncio.sleep(5) 
         
         while True:
-            # First, we check if the channel has grown (new posts). 
-            # It's like checking the total page count of a book that's still being written.
-            total = await self.telethon.get_total_messages(user_id, source)
-            if total >= 0:
+            try:
+                # First, we check if the channel has grown (new posts). 
+                # It's like checking the total page count of a book that's still being written.
+                total = await self.telethon.get_total_messages(user_id, source)
+                if total >= 0:
+                    async with async_session() as db_session:
+                        repo = UserRepository(db_session)
+                        await repo.update_pair_total_posts(pair_id, total)
+
+                # If there's a 'live' message waiting (someone just posted), we let it 'cut the line'.
+                # Backfilling history is a secondary priority compared to staying up-to-date with the present.
+                if pair_id in self.schedule_queue and self.schedule_queue[pair_id]:
+                    logger.info(f"Pair #{pair_id} has live messages queued. Pausing backfill for priority.")
+                    await asyncio.sleep(60) 
+                    continue
+
+                # Before every fetch, we check if the 'boss' (the user) has turned off this pair
+                # or if the pair has run into too many errors. No point running if the engine is off.
                 async with async_session() as db_session:
                     repo = UserRepository(db_session)
-                    await repo.update_pair_total_posts(pair_id, total)
+                    pair = await repo.get_pair_by_id(pair_id)
+                    if not pair or not pair.is_active or pair.status == "error":
+                        logger.info(f"Backfill for Pair #{pair_id} stopped (not active/deleted).")
+                        self.next_post_info.pop(pair_id, None)
+                        break
 
-            # If there's a 'live' message waiting (someone just posted), we let it 'cut the line'.
-            # Backfilling history is a secondary priority compared to staying up-to-date with the present.
-            if pair_id in self.schedule_queue and self.schedule_queue[pair_id]:
-                logger.info(f"Pair #{pair_id} has live messages queued. Pausing backfill for priority.")
-                await asyncio.sleep(60) 
-                continue
+                # Instead of asking for one message at a time (which is like walking to the store for a single egg),
+                # we fetch a batch of 50. This is much kinder to the Telegram servers and faster for us.
+                messages = await self.telethon.fetch_messages_from(user_id, source, current_id, limit=50)
+                
+                if not messages:
+                    # If we've reached the very last page of the book, we wrap back to the beginning.
+                    # It's a never-ending loop (recycling) to keep the channel active.
+                    logger.info(f"Backfill for Pair #{pair_id} reached the end. Recycling to message #1.")
+                    current_id = 0 # Next fetch will use offset_id=0, getting ID 1
+                    async with async_session() as db_session:
+                        repo = UserRepository(db_session)
+                        await repo.update_pair_start_id(pair_id, 1)
+                    continue
 
-            # Before every fetch, we check if the 'boss' (the user) has turned off this pair
-            # or if the pair has run into too many errors. No point running if the engine is off.
-            async with async_session() as db_session:
-                repo = UserRepository(db_session)
-                pair = await repo.get_pair_by_id(pair_id)
-                if not pair or not pair.is_active or pair.status == "error":
-                    logger.info(f"Backfill for Pair #{pair_id} stopped (not active/deleted).")
-                    break
 
-            # Instead of asking for one message at a time (which is like walking to the store for a single egg),
-            # we fetch a batch of 50. This is much kinder to the Telegram servers and faster for us.
-            messages = await self.telethon.fetch_messages_from(user_id, source, current_id, limit=50)
-            
-            if not messages:
-                # If we've reached the very last page of the book, we wrap back to the beginning.
-                # It's a never-ending loop (recycling) to keep the channel active.
-                logger.info(f"Backfill for Pair #{pair_id} reached the end. Recycling to message #1.")
-                current_id = 0 # Next fetch will use offset_id=0, getting ID 1
-                async with async_session() as db_session:
-                    repo = UserRepository(db_session)
-                    await repo.update_pair_start_id(pair_id, 1)
-                continue
+                # Now we process our bag of 50 messages one by one.
+                for msg in messages:
+                    if not msg:
+                        continue # Sometimes Telegram has 'blank' spaces; we just skip them.
 
-            # Now we process our bag of 50 messages one by one.
-            for msg in messages:
-                if not msg:
-                    continue # Sometimes Telegram has 'blank' spaces; we just skip them.
-
-                # --- THE SENIOR FIX: THE GUARDED GHOST CHECK ---
-                try:
-                    fresh = await self.telethon.get_message(user_id, source, msg.id)
-                    if not fresh:
-                        logger.info(f"Ghost detected: Message {msg.id} was deleted. Skipping.")
+                    # --- THE SENIOR FIX: THE GUARDED GHOST CHECK ---
+                    try:
+                        fresh = await self.telethon.get_message(user_id, source, msg.id)
+                        if not fresh:
+                            logger.info(f"Ghost detected: Message {msg.id} was deleted. Skipping.")
+                            current_id = msg.id
+                            async with async_session() as db_session:
+                                repo = UserRepository(db_session)
+                                await repo.update_pair_start_id(pair_id, current_id + 1)
+                            continue
+                    except MessageIdInvalidError:
+                        logger.info(f"Ghost detected (Invalid ID): Message {msg.id}. Skipping.")
                         current_id = msg.id
                         async with async_session() as db_session:
                             repo = UserRepository(db_session)
                             await repo.update_pair_start_id(pair_id, current_id + 1)
                         continue
-                except MessageIdInvalidError:
-                    logger.info(f"Ghost detected (Invalid ID): Message {msg.id}. Skipping.")
-                    current_id = msg.id
-                    async with async_session() as db_session:
-                        repo = UserRepository(db_session)
-                        await repo.update_pair_start_id(pair_id, current_id + 1)
-                    continue
-                except rpcbaseerrors.UnauthorizedError:
-                    logger.critical(f"Session Revoked for User {user_id}! Stopping Pair #{pair_id}.")
-                    await self.deactivate_pair(user_id, pair_id)
-                    # Senior Fix: Kill the listener too! No zombie state allowed.
-                    await self.telethon.stop_listener(user_id)
-                    self._active_listeners.discard(user_id)
+                    except rpcbaseerrors.UnauthorizedError:
+                        logger.critical(f"Session Revoked for User {user_id}! Stopping Pair #{pair_id}.")
+                        await self.deactivate_pair(user_id, pair_id)
+                        # Senior Fix: Kill the listener too! No zombie state allowed.
+                        await self.telethon.stop_listener(user_id)
+                        self._active_listeners.discard(user_id)
                     
-                    await self._notify_user(user_id, "⚠️ Your Telegram session has been revoked. The bot has stopped all your active tasks.")
-                    return # Exit the backfill loop entirely
-                except Exception as e:
-                    logger.error(f"Unexpected error in Ghost Check for msg {msg.id}: {e}")
-                    continue 
-                # ---------------------------------------------
+                        await self._notify_user(user_id, "⚠️ Your Telegram session has been revoked. The bot has stopped all your active tasks.")
+                        return # Exit the backfill loop entirely
+                    except Exception as e:
+                        logger.error(f"Unexpected error in Ghost Check for msg {msg.id}: {e}")
+                        continue 
+                    # ---------------------------------------------
 
-                # If the next message we found is way ahead of where we were (e.g., from ID 8 to ID 15),
-                # it means some messages were deleted. We note this 'jump' in the logs so we know why 
-                # there's a gap in the timeline.
-                if msg.id > current_id + 1:
-                    logger.info(f"[Pair {pair_id}] Gap detected! Jumping from ID {current_id} to {msg.id}")
+                    # If the next message we found is way ahead of where we were (e.g., from ID 8 to ID 15),
+                    # it means some messages were deleted. We note this 'jump' in the logs so we know why 
+                    # there's a gap in the timeline.
+                    if msg.id > current_id + 1:
+                        logger.info(f"[Pair {pair_id}] Gap detected! Jumping from ID {current_id} to {msg.id}")
 
-                # If the user wants us to 'scrub' the text (remove links or swap @usernames), 
-                # we call our cleaning crew before sending it out.
-                if msg.message:
-                    msg.message = MessageCleaner.clean(msg.message, mode=filter_type, replacement=replacement_link)
+                    # If the user wants us to 'scrub' the text (remove links or swap @usernames), 
+                    # we call our cleaning crew before sending it out.
+                    if msg.message:
+                        msg.message = MessageCleaner.clean(msg.message, mode=filter_type, replacement=replacement_link)
 
-                # We hand the message over to the delivery service.
-                result = await self._send_with_retry(user_id, destination, msg, pair_id=pair_id)
+                    # We hand the message over to the delivery service.
+                    result = await self._send_with_retry(user_id, destination, msg, pair_id=pair_id)
                 
-                if result["ok"]:
-                    # We've successfully processed this 'page'. We update our bookmark (current_id)
-                    # and save it to the 'Vault' (database) so if the bot crashes, we know exactly 
-                    # where to resume.
-                    current_id = msg.id
-                    async with async_session() as db_session:
-                        repo = UserRepository(db_session)
-                        # We save current_id + 1 because the next batch fetch should start AFTER this message.
-                        await repo.update_pair_start_id(pair_id, current_id + 1)
+                    if result["ok"]:
+                        # We've successfully processed this 'page'. We update our bookmark (current_id)
+                        # and save it to the 'Vault' (database) so if the bot crashes, we know exactly 
+                        # where to resume.
+                        current_id = msg.id
+                        async with async_session() as db_session:
+                            repo = UserRepository(db_session)
+                            # We save current_id + 1 because the next batch fetch should start AFTER this message.
+                            await repo.update_pair_start_id(pair_id, current_id + 1)
                     
-                    # We wait according to the user's schedule. This 'drip-feed' keeps the destination
-                    # channel from looking like a bot is spamming a thousand posts in one second.
-                    logger.info(f"Pair #{pair_id} posted msg {current_id}. Waiting {interval_minutes}m for next.")
-                    await asyncio.sleep(interval_minutes * 60)
-                else:
-                    # If the delivery failed (e.g., we got kicked from the channel), we stop the operation
-                    # for this pair to avoid making things worse.
-                    logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to error.")
-                    return # Exit the function entirely
+                        # We wait according to the user's schedule. This 'drip-feed' keeps the destination
+                        # channel from looking like a bot is spamming a thousand posts in one second.
+                        logger.info(f"Pair #{pair_id} posted msg {current_id}. Waiting {interval_minutes}m for next.")
+                    
+                        # Store info about the NEXT target
+                        next_idx = messages.index(msg) + 1
+                        preview = ""
+                        if next_idx < len(messages):
+                            next_msg = messages[next_idx]
+                            if next_msg and next_msg.message:
+                                preview = next_msg.message[:13] + "..." if len(next_msg.message) > 13 else next_msg.message
+                        if not preview:
+                            preview = "[Media/Unknown]"
+                        
+                        self.next_post_info[pair_id] = {
+                            "time": time.time() + (interval_minutes * 60),
+                            "preview": preview
+                        }
+                    
+                        await asyncio.sleep(interval_minutes * 60)
+                    else:
+                        # If the delivery failed (e.g., we got kicked from the channel), we stop the operation
+                        # for this pair to avoid making things worse.
+                        logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to error.")
+                        self.next_post_info.pop(pair_id, None)
+                        return # Exit the function entirely
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Error in backfill loop for pair {pair_id}: {e}")
+                await asyncio.sleep(60) # Wait before retrying to avoid spamming errors
 
         
     def _compute_dedup_key(self, message) -> str | None:
@@ -531,6 +559,20 @@ class RepostService:
         self.schedule_queue[pair_id].append({
             "user_id": user_id, "destination": destination, "messages": messages
         })
+        
+        # Set next post info if not exists
+        if pair_id not in self.next_post_info:
+            first_m = messages[0] if isinstance(messages, list) else messages
+            preview = ""
+            if getattr(first_m, "message", None):
+                preview = first_m.message[:13] + "..." if len(first_m.message) > 13 else first_m.message
+            if not preview:
+                preview = "[Media/Unknown]"
+            self.next_post_info[pair_id] = {
+                "time": time.time() + (interval_minutes * 60),
+                "preview": preview
+            }
+            
         if pair_id not in self.schedule_timers or self.schedule_timers[pair_id].done():
             self.schedule_timers[pair_id] = asyncio.create_task(self._flush_schedule(pair_id, interval_minutes))
 
@@ -543,6 +585,7 @@ class RepostService:
             await self._send_with_retry(item["user_id"], item["destination"], item["messages"], pair_id=pair_id)
         
         self.schedule_timers.pop(pair_id, None)
+        self.next_post_info.pop(pair_id, None)
         self.media_cache.clear_pair(pair_id)
 
     def _cancel_schedule_timer(self, pair_id: int):
