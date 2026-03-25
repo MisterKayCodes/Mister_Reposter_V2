@@ -1,0 +1,43 @@
+# DATA: THE BLUEPRINTS (models.py)
+
+### The Character: "The Registrar"
+Think of `models.py` as the Registrar's Office. Before anyone can join the club or start a reposting job, they have to fill out a very specific form. This file defines exactly what those forms look like.
+
+---
+
+### The Member Profile (User)
+```python
+class User(Base):
+    id: Mapped[int]        # The Member's ID Number
+    username: Mapped[str]  # The Member's Name
+    session_string: str    # The Member's Secret Key
+```
+**Analogy: The ID Card.**
+Every user who uses the bot gets an ID card. It stores their unique number and the "Secret Key" that allows the bot to act on their behalf. Without this card, the bot doesn't know who you are.
+
+---
+
+### The Repost Contract (RepostPair)
+```python
+class RepostPair(Base):
+    source_id: str      # Where we are picking up from
+    destination_id: str # Where we are dropping off
+    is_active: bool     # Is the contract currently valid?
+    schedule_interval: int # How long between deliveries?
+```
+**Analogy: The Delivery Contract.**
+This is the most important form in the bot. It's a contract between two channels. It tells the bot: "Take everything from Source A and deliver it to Destination B." It also includes the "Timer" (the schedule) and the "Filter" (the cleaning instructions).
+
+---
+
+### The Strike System (error_count)
+```python
+error_count: Mapped[int] # How many times have we failed?
+```
+**Analogy: The Three Strikes Rule.**
+If the delivery truck crashes or gets blocked by Telegram, the Registrar adds a "Strike" to the contract. If a contract gets too many strikes, it's considered "Broken" and the Architect stops trying to run it until you fix it.
+
+---
+
+### Summary for Non-Coders
+`models.py` defines the "Forms" the bot uses to remember things. Whether it's your user account or your reposting schedule, everything has a specific place and a specific name on the form.

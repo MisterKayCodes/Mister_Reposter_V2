@@ -3,6 +3,7 @@ SERVICES: SESSION MANAGER
 The 'Nervous System'. (Anatomy: Nervous System)
 Orchestrates input type detection, validation, and storage. (Rule 11)
 """
+import uuid
 import os
 import aiofiles
 import logging
@@ -17,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 class SessionService:
     def __init__(self):
-        # Same here—matching the DNA perfectly
         os.makedirs(SESSIONS_DIR, exist_ok=True)
         self.telethon = TelethonProvider(
             api_id=config.API_ID, 
@@ -29,7 +29,14 @@ class SessionService:
         user_id = message.from_user.id
 
         if message.document:
-            file_path = f"{SESSIONS_DIR}/{user_id}.session"
+            # Senior Fix: Don't trust the label, check the box
+            if not message.document.file_name.lower().endswith(".session"):
+                await message.answer("❌ That box isn't labeled 'Cookies'! Please upload a .session file.")
+                return False
+
+            # Senior Fix: Use a UUID for the filename so it's impossible to guess or hijack
+            safe_name = f"{uuid.uuid4()}.session"
+            file_path = os.path.join(SESSIONS_DIR, safe_name)
             
             # Action: Download directly to destination
             await message.bot.download(message.document, destination=file_path)

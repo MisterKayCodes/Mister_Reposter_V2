@@ -1,0 +1,46 @@
+# CORE: THE CLEANING CREW (logic.py)
+
+### The Character: "The Bouncer"
+Think of `logic.py` as a very detail-oriented Bouncer at a high-end club. His job is to look at every "message" (the guests) that wants to enter the destination channel and make sure they are dressed correctly and aren't carrying any unwanted "links" or "ads."
+
+---
+
+### The Checklist (MessageCleaner.clean)
+```python
+# This is like a 'Bouncers' checklist at a club. 
+# ...
+if mode == 1:
+    # Delete matches (including @usernames)
+    cleaned_text = MessageCleaner._REMOVE_PATTERN.sub('', cleaned_text)
+```
+**Analogy: Cleaning the Text.**
+The Bouncer has three modes:
+1. **The Observer**: He lets the guest in exactly as they are.
+2. **The Eraser**: He sees a "t.me/" link or a "@username" and he simply rubs it out before the guest enters.
+3. **The Stamp**: He sees a rival link and swaps it for *your* link instead.
+
+---
+
+### The Final Polish (re.sub)
+```python
+# Rule 14: Final Polish
+cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
+```
+**Analogy: Straightening the Tie.**
+After the cleaning is done, the Bouncer does a "Final Polish." He removes triple-spaces and messy gaps to make sure the message looks clean and professional before it's sent out.
+
+---
+
+### Cleaning the Mud (sanitize_channel_id)
+```python
+# Think of this like 'Cleaning the mud off a shoe' before entering the house.
+# ...
+prefixes = ["https://t.me/+", "https://t.me/joinchat/", ...]
+```
+**Analogy: The Doormat.**
+This is for the channel links you provide. The Bouncer strips away the "https://t.me/" mud so that the "shoe" (the channel name) is clean enough to be stored in the Vault (the database). 
+
+---
+
+### Summary for Non-Coders
+`logic.py` is the bot's filter. It cleans up messy text, removes spammy links, and ensures that every post in your channel looks exactly how you want it to look.

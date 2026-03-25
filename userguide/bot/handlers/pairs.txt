@@ -1,0 +1,56 @@
+# BOT: THE INTAKE CLERK (pairs.py)
+
+### The Character: "The Intake Clerk"
+Think of `pairs.py` as the friendly Intake Clerk at the front desk. When you send a message to the bot, she is the one who answers. Her job is to help you fill out the "Reposting Contract" (the RepostPair) without making any mistakes.
+
+---
+
+### The Application Form (CreatePair State)
+```python
+await state.set_state(CreatePair.waiting_for_source)
+```
+**Analogy: The Clipboard.**
+When you click "Create," the Clerk pulls out a clipboard. She won't let you submit the form until every question is answered. This "Clipboard" (the FSM state) keeps track of where you are in the conversation.
+
+---
+
+### Phase 1 & 2: The Addresses (Source & Destination)
+```python
+# Create Pair (1/5) - Send the source channel
+# Create Pair (2/5) - Send the destination channel
+```
+**Analogy: The 'From' and 'To' Labels.**
+The Clerk asks you for two addresses. She uses the Scout (`resolver.py`) to double-check that the addresses are real. If they are private houses, she asks for a key (the Invite Link).
+
+---
+
+### Phase 3 & 4: The Cleaning Instructions (Filter & Replacement)
+```python
+# Choose a filter mode:
+# Send the replacement link/text:
+```
+**Analogy: The Laundry Instructions.**
+The Clerk asks: "Do you want these messages delivered exactly as they are, or should we wash them (remove links) or even put a new brand on them (replacement link)?" She notes your choice on the form.
+
+---
+
+### Phase 5: The Review (show_preview)
+```python
+# summary = "🔍 Review Your Pair ... Does this look correct?"
+```
+**Analogy: The Final Proofread.**
+Before she sends the form to the Vault Keeper, the Clerk hands the clipboard back to you. She says, "Is this correct? Once I stamp it, the delivery trucks will start moving!"
+
+---
+
+### Phase 6: The Final Stamp (confirm_pair)
+```python
+# await repost_service.add_new_pair(...)
+```
+**Analogy: Dispatching the Order.**
+Once you click "Confirm," the Clerk gives the form to the Architect (`repost_service`). He then tells the Scout to start watching the source channel and delivering your messages.
+
+---
+
+### Summary for Non-Coders
+`pairs.py` is the part of the bot you actually talk to. It's a guided conversation that makes sure the bot knows exactly what you want it to do before it starts the heavy work of reposting.

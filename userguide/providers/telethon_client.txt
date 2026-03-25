@@ -1,0 +1,50 @@
+# PROVIDERS: THE EYES (telethon_client.py)
+
+### The Character: "The Scout"
+If the Conductor (`repost_engine.py`) is the boss, the Scout is the one who goes out on the field. He is the only one who actually talks to the Telegram servers. He is our eyes and ears.
+
+---
+
+### The Passport Check (validate_session)
+```python
+async def validate_session(self, session_data) -> bool:
+    # ...
+```
+**Analogy: The Security Gate.**
+Before the Scout can do his job, he has to show his Passport (the Session). If the security guard at the border (Telegram) says "Sorry, the ID is expired," the Scout isn't allowed to enter.
+
+---
+
+### The Drone Delivery (fetch_messages_from)
+```python
+async def fetch_messages_from(self, user_id, source_id, from_msg_id, limit):
+    # ...
+```
+**Analogy: The Package Retrieval Drone.**
+The Conductor tells the Scout which part of the "street" to check. The Scout flies a drone over to that location and picks up the packages. He brings back a box of 50 to the Conductor.
+
+---
+
+### The Auditor (get_total_messages)
+```python
+# Senior Move: Use the low-level GetHistoryRequest
+# ...
+```
+**Analogy: The Counting Officer.**
+The Scout also goes into the channel periodically, stops everything, and counts every single message that has ever been posted. He reports this number back so the bot knows how much work is left.
+
+---
+
+### The Delivery Truck (send_message)
+```python
+# This is our 'Delivery' service. We take a message and hand it over 
+# to the destination channel.
+# ...
+```
+**Analogy: The Final Drop-off.**
+Once the Cleaning Crew has finished their work, the Scout loads the cleaned message into his truck and delivers it to the destination channel. 
+
+---
+
+### Summary for Non-Coders
+`telethon_client.py` is the only part of the bot that makes contact with Telegram's world. It handles the security, the fetching, and the delivery of every single message you see in your bot.

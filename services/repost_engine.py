@@ -9,6 +9,7 @@ import asyncio
 import time
 import hashlib
 from collections import defaultdict
+from telethon.errors import MessageIdInvalidError, rpcbaseerrors
 from providers.telethon_client import TelethonProvider
 from data.database import async_session
 from data.repository import UserRepository
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 MAX_ERRORS_BEFORE_DISABLE = 5
 FLOOD_WAIT_MAX_RETRY = 3
 DEDUP_CACHE_SIZE = 500
+MAX_ALBUM_WAIT = 30 # Senior Fix: 30s hard timeout for albums
+MAX_ALBUM_ITEMS = 10 # Senior Fix: 10 items max per album
 
 
 class RepostService:
@@ -40,9 +43,15 @@ class RepostService:
         # Rule 1: Tracking state to prevent duplicate listeners
         self._active_listeners = set()
 
+    # Every conductor needs a baton. This connects our engine to the main bot interface
+    # so we can send messages back to the users (like error alerts or status updates).
     def set_bot(self, bot):
         self._bot = bot
 
+    # This is our 'Customer Service' department. If something goes wrong or we need 
+    # to tell the user something, we use this to send them a direct message. 
+    # We wrap it in a try-except block so that if the user has blocked the bot, 
+    # the whole engine doesn't crash like a house of cards.
     async def _notify_user(self, user_id: int, text: str):
         """Rule 12: Handle notification errors explicitly."""
         if self._bot:
@@ -51,31 +60,31 @@ class RepostService:
             except Exception as e:
                 logger.error(f"Failed to notify user {user_id}: {e}")
 
+    # Before we can do anything, we need to know if we have the 'keys' to the user's
+    # Telegram account. We check for a session file on disk or a string in our database.
+    # It's like checking if a driver has a valid license before letting them start the car.
     async def user_has_session(self, user_id: int) -> bool:
-        session_file = os.path.join("data", "sessions", f"{user_id}.session")
-        if os.path.exists(session_file):
-            return True
+        # Senior Fix: Database is the single source of truth for paths
         async with async_session() as db_session:
             repo = UserRepository(db_session)
             user = await repo.get_user(user_id)
             return bool(user and user.session_string)
 
     def _get_session_path(self, user_id: int, user=None) -> str | None:
-        file_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "data", "sessions", f"{user_id}.session"
-        )
-        if os.path.exists(file_path):
-            return file_path
+        # Senior Fix: Rely on the database string which now stores the UUID path or string
         if user and user.session_string:
             return user.session_string
         return None
 
+    # When a new user walks through the door, we need to add them to our ledger
+    # so we can keep track of their pairs and settings later on.
     async def register_user(self, user_id: int, username: str):
         async with async_session() as db_session:
             repo = UserRepository(db_session)
             await repo.create_or_update_user(user_id, username)
 
+    # This just pulls up the list of all 'Source -> Destination' connections
+    # a specific user has created. It's like looking up a customer's order history.
     async def get_user_pairs(self, user_id: int):
         async with async_session() as db_session:
             repo = UserRepository(db_session)
@@ -123,6 +132,9 @@ class RepostService:
                 return True
         return False
 
+    # This is our 'Interpreter'. It takes a channel link or username and figures out
+    # the actual numeric ID Telegram uses behind the scenes. If it's a private invite 
+    # link, it'll even knock on the door (join) to get the ID.
     async def resolve_channel_for_pair(self, user_id: int, identifier: str, kind: str, invite_hash: str = None) -> str:
         """Joins private channels and returns a normalized ID."""
         if kind == "invite" and invite_hash:
@@ -225,26 +237,34 @@ class RepostService:
         return stats["total"] if stats else -1
 
     async def _backfill_from_message(self, user_id, source, destination, from_msg_id, filter_type, replacement_link, interval_minutes, pair_id):
-        """Rule 11: Optimized for scheduled progression (msg 19 -> 20 -> 21)."""
-        await asyncio.sleep(5) # Brief pause to let system stabilize
+        # Think of this like a bookmark in a long book. We're setting our initial position
+        # just before the page we want to read, because our reader always skips the current 
+        # page and goes to the next one. We use max(0, ...) to ensure we don't try to go
+        # to a page number that doesn't exist (like page -1).
+        current_id = max(0, from_msg_id - 1)
         
-        current_id = from_msg_id
+        # We'll give the system a few seconds to 'wake up' and settle before we start 
+        # the marathon of fetching old messages.
+        await asyncio.sleep(5) 
         
         while True:
-            # 1. Update Stats (Total messages in source) - Senior Move: Only update if valid
+            # First, we check if the channel has grown (new posts). 
+            # It's like checking the total page count of a book that's still being written.
             total = await self.telethon.get_total_messages(user_id, source)
             if total >= 0:
                 async with async_session() as db_session:
                     repo = UserRepository(db_session)
                     await repo.update_pair_total_posts(pair_id, total)
 
-            # 2. Check Priority: If live messages are queued, pause backfill
+            # If there's a 'live' message waiting (someone just posted), we let it 'cut the line'.
+            # Backfilling history is a secondary priority compared to staying up-to-date with the present.
             if pair_id in self.schedule_queue and self.schedule_queue[pair_id]:
                 logger.info(f"Pair #{pair_id} has live messages queued. Pausing backfill for priority.")
                 await asyncio.sleep(60) 
                 continue
 
-            # Check if pair still exists and is active before fetching
+            # Before every fetch, we check if the 'boss' (the user) has turned off this pair
+            # or if the pair has run into too many errors. No point running if the engine is off.
             async with async_session() as db_session:
                 repo = UserRepository(db_session)
                 pair = await repo.get_pair_by_id(pair_id)
@@ -252,38 +272,89 @@ class RepostService:
                     logger.info(f"Backfill for Pair #{pair_id} stopped (not active/deleted).")
                     break
 
-            # 3. Fetch only ONE message
-            messages = await self.telethon.fetch_messages_from(user_id, source, current_id, limit=1)
+            # Instead of asking for one message at a time (which is like walking to the store for a single egg),
+            # we fetch a batch of 50. This is much kinder to the Telegram servers and faster for us.
+            messages = await self.telethon.fetch_messages_from(user_id, source, current_id, limit=50)
             
             if not messages:
-                # 4. RECYCLING: If reached the end, reset to #1
+                # If we've reached the very last page of the book, we wrap back to the beginning.
+                # It's a never-ending loop (recycling) to keep the channel active.
                 logger.info(f"Backfill for Pair #{pair_id} reached the end. Recycling to message #1.")
-                current_id = 1
+                current_id = 0 # Next fetch will use offset_id=0, getting ID 1
                 async with async_session() as db_session:
                     repo = UserRepository(db_session)
-                    await repo.update_pair_start_id(pair_id, current_id)
+                    await repo.update_pair_start_id(pair_id, 1)
                 continue
 
-            msg = messages[0]
-            if msg.message:
-                msg.message = MessageCleaner.clean(msg.message, mode=filter_type, replacement=replacement_link)
+            # Now we process our bag of 50 messages one by one.
+            for msg in messages:
+                if not msg:
+                    continue # Sometimes Telegram has 'blank' spaces; we just skip them.
 
-            # Send the message
-            result = await self._send_with_retry(user_id, destination, msg, pair_id=pair_id)
-            
-            if result["ok"]:
-                # Move pointer forward
-                current_id += 1 
-                async with async_session() as db_session:
-                    repo = UserRepository(db_session)
-                    await repo.update_pair_start_id(pair_id, current_id)
+                # --- THE SENIOR FIX: THE GUARDED GHOST CHECK ---
+                try:
+                    fresh = await self.telethon.get_message(user_id, source, msg.id)
+                    if not fresh:
+                        logger.info(f"Ghost detected: Message {msg.id} was deleted. Skipping.")
+                        current_id = msg.id
+                        async with async_session() as db_session:
+                            repo = UserRepository(db_session)
+                            await repo.update_pair_start_id(pair_id, current_id + 1)
+                        continue
+                except MessageIdInvalidError:
+                    logger.info(f"Ghost detected (Invalid ID): Message {msg.id}. Skipping.")
+                    current_id = msg.id
+                    async with async_session() as db_session:
+                        repo = UserRepository(db_session)
+                        await repo.update_pair_start_id(pair_id, current_id + 1)
+                    continue
+                except rpcbaseerrors.UnauthorizedError:
+                    logger.critical(f"Session Revoked for User {user_id}! Stopping Pair #{pair_id}.")
+                    await self.deactivate_pair(user_id, pair_id)
+                    # Senior Fix: Kill the listener too! No zombie state allowed.
+                    await self.telethon.stop_listener(user_id)
+                    self._active_listeners.discard(user_id)
+                    
+                    await self._notify_user(user_id, "⚠️ Your Telegram session has been revoked. The bot has stopped all your active tasks.")
+                    return # Exit the backfill loop entirely
+                except Exception as e:
+                    logger.error(f"Unexpected error in Ghost Check for msg {msg.id}: {e}")
+                    continue 
+                # ---------------------------------------------
+
+                # If the next message we found is way ahead of where we were (e.g., from ID 8 to ID 15),
+                # it means some messages were deleted. We note this 'jump' in the logs so we know why 
+                # there's a gap in the timeline.
+                if msg.id > current_id + 1:
+                    logger.info(f"[Pair {pair_id}] Gap detected! Jumping from ID {current_id} to {msg.id}")
+
+                # If the user wants us to 'scrub' the text (remove links or swap @usernames), 
+                # we call our cleaning crew before sending it out.
+                if msg.message:
+                    msg.message = MessageCleaner.clean(msg.message, mode=filter_type, replacement=replacement_link)
+
+                # We hand the message over to the delivery service.
+                result = await self._send_with_retry(user_id, destination, msg, pair_id=pair_id)
                 
-                # Respect schedule
-                logger.info(f"Pair #{pair_id} posted msg {current_id-1}. Waiting {interval_minutes}m for next.")
-                await asyncio.sleep(interval_minutes * 60)
-            else:
-                logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to error.")
-                break
+                if result["ok"]:
+                    # We've successfully processed this 'page'. We update our bookmark (current_id)
+                    # and save it to the 'Vault' (database) so if the bot crashes, we know exactly 
+                    # where to resume.
+                    current_id = msg.id
+                    async with async_session() as db_session:
+                        repo = UserRepository(db_session)
+                        # We save current_id + 1 because the next batch fetch should start AFTER this message.
+                        await repo.update_pair_start_id(pair_id, current_id + 1)
+                    
+                    # We wait according to the user's schedule. This 'drip-feed' keeps the destination
+                    # channel from looking like a bot is spamming a thousand posts in one second.
+                    logger.info(f"Pair #{pair_id} posted msg {current_id}. Waiting {interval_minutes}m for next.")
+                    await asyncio.sleep(interval_minutes * 60)
+                else:
+                    # If the delivery failed (e.g., we got kicked from the channel), we stop the operation
+                    # for this pair to avoid making things worse.
+                    logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to error.")
+                    return # Exit the function entirely
 
         
     def _compute_dedup_key(self, message) -> str | None:
@@ -385,15 +456,31 @@ class RepostService:
         await self._execute_repost(user_id, [message])
 
     async def _process_album_after_delay(self, gid, user_id):
-        # Implement a sliding window timeout. If the length changes, wait again.
+        # Implementation of the "Waiter" timeout (Priority 3)
+        start_time = time.time()
         while True:
-            count = len(self.album_cache.get(gid, []))
+            items = self.album_cache.get(gid, [])
+            count = len(items)
+            
+            # Senior Rule: Cap at 10 items (Telegram limit)
+            if count >= MAX_ALBUM_ITEMS:
+                logger.info(f"Album {gid} reached max capacity ({MAX_ALBUM_ITEMS}). Processing now.")
+                break
+                
             await asyncio.sleep(1.0)
+            
+            # Rule: If count hasn't changed, or we've waited too long, break
             if count == len(self.album_cache.get(gid, [])):
+                break
+            
+            if time.time() - start_time > MAX_ALBUM_WAIT:
+                logger.warning(f"Album {gid} timed out after {MAX_ALBUM_WAIT}s. Processing partial album.")
                 break
                 
         messages = self.album_cache.pop(gid, [])
         if messages:
+            # Sort messages by ID to ensure sequence (Telethon might receive out-of-order)
+            messages.sort(key=lambda m: m.id)
             await self._execute_repost(user_id, messages)
 
     async def _execute_repost(self, user_id, messages):

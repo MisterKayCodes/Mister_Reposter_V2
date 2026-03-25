@@ -17,6 +17,10 @@ class MessageCleaner:
         re.IGNORECASE
     )
 
+    # This is like a 'Bouncers' checklist at a club. 
+    # It scans every message and either keeps it as-is, deletes links/usernames, 
+    # or swaps them for something else. We also perform a 'Final Polish' to 
+    # remove extra spaces and messy formatting.
     @staticmethod
     def clean(text: str, mode: int, replacement: str = None) -> str:
         """
@@ -43,11 +47,10 @@ class MessageCleaner:
         
         return cleaned_text.strip()
 
+# Think of this like 'Cleaning the mud off a shoe' before entering the house.
+# We strip off link prefixes like 'https://t.me/' so we're left with just 
+# the raw channel name or ID that our database (the Vault) expects.
 def sanitize_channel_id(input_string: str) -> str:
-    """
-    Strips prefixes to get raw username or ID.
-    Used for storage in the Vault.
-    """
     if not input_string:
         return ""
         

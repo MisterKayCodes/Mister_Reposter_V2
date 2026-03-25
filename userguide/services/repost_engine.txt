@@ -1,0 +1,54 @@
+# SERVICES: THE NERVOUS SYSTEM (repost_engine.py)
+
+### The Character: "The Conductor"
+If `main.py` is the Architect, `repost_engine.py` is the Conductor of the orchestra. He stands in the middle and signals to the Database (the Vault), the Telethon Client (the Eyes), and the Logic (the Cleaning Crew) exactly when to play their parts.
+
+---
+
+### The Bookmark (backfill_from_message)
+```python
+current_id = max(0, from_msg_id - 1)
+```
+**Analogy: Reading a Massive Book.**
+Imagine you have a book with 10,000 pages. You want to read it to a friend, but only one page per hour. `current_id` is your bookmark. We set it one page back to make sure we don't miss the first word.
+
+---
+
+### The Costco Trip (Batch Fetching)
+```python
+messages = await self.telethon.fetch_messages_from(..., limit=50)
+```
+**Analogy: Buying in Bulk.**
+Instead of walking to the store for every single ingredient, the Conductor buys a box of 50. This saves "gas" (API calls) and keeps Telegram happy.
+
+---
+
+### THE SENIOR FIX: The Pizza Freshness Check (Ghost Check)
+```python
+fresh = await self.telethon.get_message(...)
+if not fresh:
+    logger.info("Skipping Message... It was deleted.")
+```
+**Analogy: Checking the Expiration Date.**
+Because we bought 50 pizzas at once, but we only serve one every 30 minutes, by the time we get to pizza #40, it might be stale or the shop might have recalled it. The Conductor checks the "freshness" of the message right before serving it to the destination channel. If it's gone, he just moves his bookmark and skips it.
+
+---
+
+### The Smart GPS (Gap Detection)
+```python
+if msg.id > current_id + 1:
+    logger.info("Gap detected! Jumping...")
+```
+**Analogy: Skipping Empty Lots.**
+If our bookmark was at house #7, and the next house is #10, the Conductor doesn't stand at #8 and wait for a house to appear. He realizes houses #8 and #9 are gone and jumps straight to #10.
+
+---
+
+### The Delivery Driver (send_with_retry)
+**Analogy: The Persistent Courier.**
+If the delivery driver hits a traffic jam (`FloodWait`), he doesn't just throw the package away. He pulls over, checks his watch, waits for the traffic to clear, and then continues his route.
+
+---
+
+### Summary for Non-Coders
+`repost_engine.py` is the brain that manages the schedule. It decides which messages to pick up, cleans them up, checks if they still exist, and delivers them at exactly the right time so your channel looks professional and consistent.

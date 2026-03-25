@@ -29,9 +29,9 @@ async def start_web_server():
     app.router.add_get('/', lambda r: web.Response(text="Mister Reposter is running"))
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 5000)
+    site = web.TCPSite(runner, '0.0.0.0', 5555)
     await site.start()
-    logger.info("Web server started on port 5000")
+    logger.info("Web server started on port 5555")
 
 async def main():
     # 1. ENHANCED SESSION: Increased timeout to 60s to survive "Semaphore Timeouts"

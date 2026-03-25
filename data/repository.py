@@ -12,10 +12,14 @@ class UserRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    # Looking for a specific user in our ledger.
+    # It's like checking if a person's name is on the VIP list at the door.
     async def get_user(self, user_id: int) -> User | None:
         result = await self.session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
+    # If a user is new, we write their name in the ledger. If they're already there, 
+    # we just update their details (like their username).
     async def create_or_update_user(self, user_id: int, username: str | None = None) -> User:
         user = await self.get_user(user_id)
         if not user:
@@ -35,6 +39,9 @@ class UserRepository:
             return True
         return False
 
+    # This creates a new 'Bridge' between two channels. 
+    # Before we build it, we check if one already exists for these two specific 
+    # channels so we don't end up with two bridges in the same spot.
     async def add_repost_pair(
         self, user_id: int, source: str, destination: str,
         filter_type: int = 1, replacement_link: str = None,
@@ -68,6 +75,8 @@ class UserRepository:
         await self.session.refresh(new_pair)
         return new_pair
 
+    # This is like moving a bookmark in a book. 
+    # We update the ID of the last message we successfully processed.
     async def update_pair_start_id(self, pair_id: int, new_msg_id: int):
         """Rule 11: Moves the pointer forward for scheduled backfills."""
         result = await self.session.execute(

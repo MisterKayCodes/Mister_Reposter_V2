@@ -1,0 +1,37 @@
+# CONFIG: THE DNA (config.py)
+
+### The Character: "The Librarian"
+Think of `config.py` as a very strict Librarian. Before the Architect (`main.py`) can even start his shift, he has to go to the Librarian's desk. The Librarian has a checklist (the `.env` file) of everything the project needs to survive.
+
+---
+
+### The Essentials (The Checklist)
+```python
+BOT_TOKEN: SecretStr # The Bot's Apartment Key
+API_ID: int           # The Passport Number
+API_HASH: str        # The Secret Handshake
+```
+**Analogy: The Survival Kit.**
+The Librarian checks if we have:
+1. **The Bot Key**: Without this, the bot can't enter Telegram's house.
+2. **The Passport & Handshake**: These are the credentials required to fetch history and and access "restricted" areas (other people's channels).
+
+---
+
+### Phase 2: The Map (DATABASE_URL)
+```python
+DATABASE_URL: str = "..."
+```
+**Analogy: The Map to the Vault.**
+This is the address of where our Database is located. Without this, the Librarian wouldn't know where to store all the secrets we learn throughout the day.
+
+---
+
+### The "No Mistakes" Rule (Pydantic)
+**Analogy: The Librarian's Strictness.**
+We use a tool called `Pydantic`. If you try to start the bot but you forgot to put your `BOT_TOKEN` in the `.env` file, the Librarian will immediately stop the "Skeleton" from booting. She won't let us build a building with missing foundations.
+
+---
+
+### Summary for Non-Coders
+`config.py` is the bot's "DNA." It ensures that all the secret keys, passwords, and database maps are present and correct. If anything is missing or broken, it stops the bot instantly to prevent it from failing later on.

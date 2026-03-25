@@ -24,6 +24,9 @@ class TelethonProvider:
             return StringSession(session_data)
         return session_data
 
+    # Checking if our 'Passport' (the session) is still valid. 
+    # We try to talk to Telegram and see if they recognize us. 
+    # If they say 'Yes', we're good to go!
     async def validate_session(self, session_data) -> bool:
         session_obj = self._get_session(session_data)
         try:
@@ -115,6 +118,10 @@ class TelethonProvider:
             return None
 
     
+    # This is our 'Retrieval' service. We go into a channel and pull out 
+    # specific messages starting from a certain point (the offset).
+    # Since we use 'reverse=True', it's like reading a book from a specific page 
+    # forward towards the end.
     async def fetch_messages_from(self, user_id: int, source_id: str, from_msg_id: int, limit: int = 1):
         client = self.active_clients.get(user_id)
         if not client or not client.is_connected(): return []
@@ -135,6 +142,19 @@ class TelethonProvider:
         except Exception as e:
             logger.error(f"Fetch failed for {source_id}: {e}")
             return []
+
+    # This is our 'Freshness Check'. We ask Telegram if a specific message 
+    # still exists and hasn't been nuked by the original owner.
+    async def get_message(self, user_id: int, source_id: str | int, msg_id: int):
+        client = self.active_clients.get(user_id)
+        if not client or not client.is_connected(): return None
+        try:
+            target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
+            # We ask for a specific ID. If it's gone, Telegram returns None.
+            return await client.get_messages(target, ids=msg_id)
+        except Exception as e:
+            logger.error(f"Refresh failed for {source_id} msg {msg_id}: {e}")
+            return None
 
     async def get_total_messages(self, user_id: int, source_id: str) -> int:
         client = self.active_clients.get(user_id)
@@ -160,6 +180,9 @@ class TelethonProvider:
             return -1
 
 
+    # This is our 'Delivery' service. We take a message and hand it over 
+    # to the destination channel. If it's a list (an album), we handle it 
+    # as a single 'package' of media files.
     async def send_message(self, user_id: int, destination: str | int, message: any) -> dict:
         client = self.active_clients.get(user_id)
         if not client or not client.is_connected():

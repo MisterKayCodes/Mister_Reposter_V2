@@ -1,0 +1,56 @@
+# MISTER_REPOSTER V2: THE SKELETON (main.py)
+
+### The Character: "The Architect"
+Think of `main.py` as the Architect of a grand building. His job isn't to lay the bricks or cook the food; his job is to make sure the building is standing, the lights are on, and every worker knows their position before the doors open to the public.
+
+---
+
+### Phase 1: The Morning Check-in (start_web_server)
+```python
+async def start_web_server():
+    # ...
+    app.router.add_get('/', lambda r: web.Response(text="Mister Reposter is running"))
+```
+**Analogy: The "I'm Alive" Sign.**
+Before anything else, the Architect hangs a sign on the front door that says "We are open!" This is for the outside world (and monitoring tools) to quickly see that the bot hasn't crashed.
+
+---
+
+### Phase 2: Opening the Archive (init_db)
+```python
+await init_db()
+```
+**Analogy: The Vault Key.**
+The Architect walks to the basement and unlocks the giant Vault (the Database). This is where all the secret connections (pairs) and user settings are stored. If the Vault can't open, the day can't start.
+
+---
+
+### Phase 3: The Morning Roll Call (recover_all_listeners)
+```python
+await repost_service.recover_all_listeners()
+```
+**Analogy: "Where were we?"**
+After a night of sleep (or a restart), the Architect reminds every worker (the "Eyes") which channels they were supposed to be watching. It's like handing out assignments based on yesterday's notes.
+
+---
+
+### Phase 4: The Shield (NetworkRetryMiddleware)
+```python
+dp.update.outer_middleware(NetworkRetryMiddleware())
+```
+**Analogy: The Storm Umbrella.**
+Modern life is full of tiny internet "storms" (connection drops). The Shield makes sure that if a message gets dropped, the bot doesn't fall over; it just shakes off the water and tries again.
+
+---
+
+### Phase 5: The Work Shift (start_polling)
+```python
+await dp.start_polling(bot, ...)
+```
+**Analogy: Opening the Floodgates.**
+Finally, the Architect opens the doors. Now, every message flying through Telegram is checked. The bot is officially "at work," waiting for instructions and processing reposts.
+
+---
+
+### Summary for Non-Coders
+`main.py` is the "Start Button." It coordinates the database, the network protection, and the message recovery so that when you send a link to the bot, everything is already warmed up and ready to handle it perfectly.
