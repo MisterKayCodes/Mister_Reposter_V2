@@ -48,7 +48,7 @@ class TelethonProvider:
         session_obj = self._get_session(session_data)
         try:
             async with TelegramClient(session_obj, self.api_id, self.api_hash) as client:
-                return await asyncio.wait_for(client.is_user_authorized(), timeout=10)
+                return await asyncio.wait_for(client.is_user_authorized(), timeout=30)
         except Exception as e:
             logger.error(f"Telethon Validation Error: {e}")
             return False
@@ -215,9 +215,13 @@ class TelethonProvider:
                 for m in message:
                     if hasattr(m, "cached_file_id") and m.cached_file_id:
                         media_list.append(m.cached_file_id)
-                    elif getattr(m, "media", None):
+                    elif hasattr(m, "media") and getattr(m, "media", None):
                         media_list.append(m.media)
-                sent = await client.send_file(target, media_list, caption=message[0].message)
+                
+                if media_list:
+                    sent = await client.send_file(target, media_list, caption=getattr(message[0], "message", ""))
+                else:
+                    return {"ok": False, "error": "empty_album"}
             else:
                 if hasattr(message, "cached_file_id") and message.cached_file_id:
                     sent = await client.send_file(target, message.cached_file_id, caption=getattr(message, "message", ""))
