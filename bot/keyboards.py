@@ -53,7 +53,10 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
 def pairs_kb(pairs):
     builder = InlineKeyboardBuilder()
     for p in pairs:
-        label = "Pause" if p.is_active else "Play"
+        if getattr(p, "status", "") == "error":
+            label = "🔄 Clear & Resume"
+        else:
+            label = "Pause" if p.is_active else "Play"
         builder.button(text=f"{label} #{p.id}", callback_data=f"tog_{p.id}")
         builder.button(text=f"Delete #{p.id}", callback_data=f"del_{p.id}")
     if len(pairs) < MAX_PAIRS:

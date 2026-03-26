@@ -18,6 +18,19 @@ from config import ADMIN_IDS
 logger = logging.getLogger(__name__)
 repost_service = RepostService()
 
+def translate_error(error_str: str) -> str:
+    if not error_str: return "Unknown Error."
+    error_str = str(error_str).lower()
+    if "admin" in error_str or "restricted" in error_str or "permission" in error_str or "forbidden" in error_str:
+        return "I need to be an Admin in the channel to post media!"
+    if "peer" in error_str or "unreachable" in error_str or "find" in error_str:
+        return "I can't find that channel anymore. Did it change names?"
+    if "banned" in error_str or "deactivated" in error_str:
+        return "Telegram has temporarily restricted this account from posting."
+    if "flood" in error_str:
+        return "Too many requests. Telegram is making us wait."
+    return "Unknown Telegram Error. Check server logs."
+
 
 async def render_stats_menu(message: types.Message, user_id: int):
     """Lists all pairs to selection dashboard."""
@@ -62,11 +75,17 @@ async def render_pair_stats(message: types.Message, user_id: int, pair_id: int):
         lines = [
             f"<b>📊 Stats for Pair #{stats['id']}</b>",
             f"<i>(Last updated: {now})</i>\n",
+        ]
+        
+        if stats.get("last_error"):
+            lines.append(f"⚠️ <b>PAUSED:</b> {translate_error(stats['last_error'])}\n")
+            
+        lines.extend([
             f"📫 <b>Source:</b> <code>{stats['source']}</code>",
             f"📬 <b>Destination:</b> <code>{stats['destination']}</code>",
             f"🕒 <b>Schedule:</b> {schedule_label}",
             "──────────────────"
-        ]
+        ])
 
         if stats["schedule"] and stats["schedule"] > 0:
             total = stats["total"]
@@ -188,9 +207,15 @@ async def render_pairs_view(message: types.Message, user_id: int):
             
             info = [
                 f"<b>#{p.id} [{status}]</b>",
-                f"<code>{p.source_id}</code> ➔ <code>{p.destination_id}</code>",
-                f"Filter: {filt} | Schedule: {schedule}"
+                f"<code>{p.source_id}</code> ➔ <code>{p.destination_id}</code>"
             ]
+            
+            if raw_status == "error":
+                raw_err = repost_service.last_errors.get(p.id)
+                friendly_err = translate_error(raw_err)
+                info.append(f"⚠️ <i>{friendly_err}</i>")
+                
+            info.append(f"Filter: {filt} | Schedule: {schedule}")
 
             # Simplified info for the Pairs list
             if p.start_from_msg_id:

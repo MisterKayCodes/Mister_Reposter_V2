@@ -43,6 +43,7 @@ class RepostService:
         # Rule 1: Tracking state to prevent duplicate listeners
         self._active_listeners = set()
         self.next_post_info = {}
+        self.last_errors = {}
 
 
     # Every conductor needs a baton. This connects our engine to the main bot interface
@@ -231,7 +232,8 @@ class RepostService:
                 "destination": pair.destination_id,
                 "schedule": pair.schedule_interval,
                 "is_active": pair.is_active,
-                "next_post": self.next_post_info.get(pair_id)
+                "next_post": self.next_post_info.get(pair_id),
+                "last_error": self.last_errors.get(pair_id) if pair.status == "error" else None
             }
 
     async def sync_pair_stats(self, user_id: int, pair_id: int):
@@ -381,8 +383,10 @@ class RepostService:
                         else:
                             # If the delivery failed fatally (e.g., we got kicked from the channel), we stop the operation
                             # for this pair to avoid making things worse.
-                            logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to fatal error: {error_type}")
+                            err_detail = result.get("detail", str(error_type))
+                            logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to fatal error: {err_detail}")
                             self.next_post_info.pop(pair_id, None)
+                            self.last_errors[pair_id] = err_detail
                             return # Exit the function entirely
             except asyncio.CancelledError:
                 raise
@@ -467,6 +471,7 @@ class RepostService:
         return {"ok": False, "error": "max_retries"}
 
     async def _record_pair_error(self, pair_id: int, user_id: int, error_detail: str):
+        self.last_errors[pair_id] = error_detail
         async with async_session() as db_session:
             repo = UserRepository(db_session)
             new_count = await repo.increment_error_count(pair_id)
@@ -474,7 +479,7 @@ class RepostService:
                 await repo.deactivate_pair_as_error(pair_id)
                 self._cancel_schedule_timer(pair_id)
                 self._cancel_backfill_task(pair_id)
-                await self._notify_user(user_id, f"Pair #{pair_id} disabled after {new_count} errors.")
+                await self._notify_user(user_id, f"Pair #{pair_id} disabled after {new_count} errors. Reason: {error_detail}")
 
     async def _handle_new_message(self, message, user_id):
         if not (message.message or message.media): return
@@ -557,7 +562,7 @@ class RepostService:
         else:
             result = await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id)
             if not result["ok"]:
-                await self._record_pair_error(p.id, user_id, result.get("error", "Unknown"))
+                await self._record_pair_error(p.id, user_id, result.get("detail", result.get("error", "Unknown")))
 
     def _enqueue_scheduled(self, pair_id: int, user_id: int, destination: str, messages, interval_minutes: int):
         if pair_id not in self.schedule_queue:

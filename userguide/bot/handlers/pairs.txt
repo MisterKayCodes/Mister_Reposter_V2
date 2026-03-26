@@ -50,6 +50,10 @@ Before she sends the form to the Vault Keeper, the Clerk hands the clipboard bac
 **Analogy: Dispatching the Order.**
 Once you click "Confirm," the Clerk gives the form to the Architect (`repost_service`). He then tells the Scout to start watching the source channel and delivering your messages.
 
+### THE SENIOR FIX: The Lazy Translator
+**Analogy: The Multi-Lingual Receptionist.**
+When Telegram yells `ChatAdminRequiredError` at the Conductor, the user has no idea what that means. The Intake Clerk (the UI) now works as a translator. She catches that robotic error and shows it on the Stats Dashboard as "**⚠️ I need to be an Admin in the channel!**". She also transforms the standard Pause button into a "**🔄 Clear & Resume**" button, turning a frustrating dead-end into a single-click fix.
+
 ---
 
 ### Summary for Non-Coders
