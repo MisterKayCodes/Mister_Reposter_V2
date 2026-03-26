@@ -264,12 +264,6 @@ class RepostService:
                     repo = UserRepository(db_session)
                     await repo.update_pair_total_posts(pair_id, total)
 
-                # If there's a 'live' message waiting (someone just posted), we let it 'cut the line'.
-                # Backfilling history is a secondary priority compared to staying up-to-date with the present.
-                if pair_id in self.schedule_queue and self.schedule_queue[pair_id]:
-                    logger.info(f"Pair #{pair_id} has live messages queued. Pausing backfill for priority.")
-                    await asyncio.sleep(60) 
-                    continue
 
                 # Before every fetch, we check if the 'boss' (the user) has turned off this pair
                 # or if the pair has run into too many errors. No point running if the engine is off.
@@ -379,11 +373,17 @@ class RepostService:
                     
                         await asyncio.sleep(interval_minutes * 60)
                     else:
-                        # If the delivery failed (e.g., we got kicked from the channel), we stop the operation
-                        # for this pair to avoid making things worse.
-                        logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to error.")
-                        self.next_post_info.pop(pair_id, None)
-                        return # Exit the function entirely
+                        error_type = result.get("error", "unknown")
+                        if error_type in ["disconnected", "timeout"]:
+                            logger.warning(f"Transient error '{error_type}' on Pair #{pair_id}. Waiting 60s to retry batch.")
+                            await asyncio.sleep(60)
+                            break # Breaks out of the mini-batch, outer while loop will refetch and retry!
+                        else:
+                            # If the delivery failed fatally (e.g., we got kicked from the channel), we stop the operation
+                            # for this pair to avoid making things worse.
+                            logger.error(f"Backfill stopped on Pair #{pair_id} at msg {current_id} due to fatal error: {error_type}")
+                            self.next_post_info.pop(pair_id, None)
+                            return # Exit the function entirely
             except asyncio.CancelledError:
                 raise
             except Exception as e:
