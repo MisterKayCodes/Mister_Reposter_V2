@@ -28,6 +28,10 @@ A "set-and-forget" Telegram bot that connects to your personal Telegram account 
 - **file_id caching**: strictly maps and reuses Telegram `file_id` references for 7 days to avoid repeatedly downloading/re-uploading identical media, saving immense bandwidth
 - **Backfill Guardians**: background daemon threads self-terminate gracefully if a pair is deleted or paused, to prevent zombie processes and API abuse limit bans
 - **Auto-recovery**: all active listeners resume automatically on bot restart
+- **Next Post Tracking**: Real-time stats dashboard displays exactly when the next scheduled post will fire, along with a 13-character preview of its content.
+- **The Safe-Start Reconnection Guard**: The "Eyes" (Telethon client) dynamically detect silent server disconnects and auto-reconnect, validating authorization before fetching to prevent "Zombie Sessions."
+- **The "Circuit Breaker" Safety Valve**: Aggressively protects the asyncio event loop. If Telethon returns empty/invalid responses due to network drops, backfill tasks safely throttle (60s) instead of violently spinning into a 100% CPU starvation loop.
+- **Queue Independence**: Live message listeners and historical backfills run perfectly concurrently. Backfills are no longer arbitrarily starved when live messages are waiting in the queue.
 
 ### Permissions
 - **Admin system**: `ADMIN_IDS` list in `config.py` controls privileged access

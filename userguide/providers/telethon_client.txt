@@ -44,6 +44,10 @@ The Scout also goes into the channel periodically, stops everything, and counts 
 **Analogy: The Final Drop-off.**
 Once the Cleaning Crew has finished their work, the Scout loads the cleaned message into his truck and delivers it to the destination channel. 
 
+### THE SENIOR FIX: The Safe-Start Guard (_ensure_connected)
+**Analogy: Waking the Sleeping Guard.**
+Telegram likes to silently drop connections if they are idle for 45 minutes to save resources. When the Conductor asks the Scout for a delivery after a 4-hour break, the Scout doesn't just return empty-handed. He explicitly checks his radio first, and if it's dead, he re-authenticates (reconnects) before knocking on Telegram's door. This permanently solves the "Zombie Session" bug.
+
 ---
 
 ### Summary for Non-Coders

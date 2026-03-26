@@ -48,6 +48,16 @@ If our bookmark was at house #7, and the next house is #10, the Conductor doesn'
 **Analogy: The Persistent Courier.**
 If the delivery driver hits a traffic jam (`FloodWait`), he doesn't just throw the package away. He pulls over, checks his watch, waits for the traffic to clear, and then continues his route.
 
+### THE SENIOR FIX: The Circuit Breaker (Safety Valve)
+**Analogy: The Traffic Light.**
+If the delivery truck (Telethon) suddenly loses its radio signal, it doesn't just drive in frantic circles at 100mph hitting 100% CPU. The Conductor realizes the connection dropped and forces a 60-second Red Light (sleep) to keep the engine from overheating.
+
+---
+
+### THE SENIOR FIX: Independence (No Queue Starvation)
+**Analogy: The Smart Mailman.**
+In the past, if you handed the mailman a letter for tomorrow (a live queued message), he would stop delivering yesterday's mail (backfill) and just stare at his watch. Now, the Conductor runs two completely independent lanes. The mailman delivers yesterday's mail at exactly the scheduled pace, and handles tomorrow's mail separately without ever freezing.
+
 ---
 
 ### Summary for Non-Coders
