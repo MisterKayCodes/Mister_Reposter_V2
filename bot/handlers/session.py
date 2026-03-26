@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from services.session_manager import SessionService
 from bot.states import SessionUpload
 from bot.keyboards import back_kb, cancel_kb, main_menu_kb
-from config import ADMIN_IDS
+from core.config import ADMIN_IDS
 
 router = Router()
 

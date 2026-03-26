@@ -15,7 +15,7 @@ from data.database import async_session
 from data.repository import UserRepository
 from core.repost.logic import MessageCleaner
 from services.media_cache import MediaCache
-from config import config
+from core.config import config
 
 logger = logging.getLogger(__name__)
 

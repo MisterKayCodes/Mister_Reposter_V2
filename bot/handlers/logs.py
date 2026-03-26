@@ -7,7 +7,7 @@ Follows architecture rules: callback-only, keyboard from keyboards.py.
 from aiogram import Router, types, F
 from bot.keyboards import logs_kb
 from utils.log_buffer import log_buffer
-from config import ADMIN_IDS
+from core.config import ADMIN_IDS
 
 router = Router()
 

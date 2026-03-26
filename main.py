@@ -11,7 +11,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.session.aiohttp import AiohttpSession # Added for timeout control
 
 from bot.middleware import SessionGuardMiddleware, NetworkRetryMiddleware # Added NetworkRetry
-from config import config
+from core.config import config
 from data.database import init_db
 from bot.routers import register_all_routers
 from utils.log_buffer import log_buffer

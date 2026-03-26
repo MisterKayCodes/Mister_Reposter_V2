@@ -63,7 +63,7 @@ The project follows a **service-oriented architecture** with strict separation o
 | **The Brain** | `core/` | Pure functions for text processing and channel input resolution |
 | **The Vault** | `data/` | Database models, engine setup, and repository pattern |
 | **The Skeleton** | `main.py` | Application entry point — initializes DB, recovers listeners, starts polling |
-| **The DNA** | `config.py` | Pydantic-validated environment configuration + admin IDs |
+| **The DNS / DNA** | `core/config.py` | Pydantic-validated environment configuration + admin IDs |
 | **Utilities** | `utils/` | Cross-cutting concerns (log buffer) |
 | **Documentation** | `docs/` | Technical journal (mister.md) and personal dev log (dev_log.md) |
 

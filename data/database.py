@@ -6,7 +6,7 @@ Sets up the asynchronous engine and session factory.
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import event
 from .models import Base
-from config import config
+from core.config import config
 
 # Create the Async Engine
 engine = create_async_engine(

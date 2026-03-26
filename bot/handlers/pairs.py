@@ -18,7 +18,7 @@ from bot.keyboards import (
 )
 from bot.handlers.utils import render_pairs_view, repost_service
 from core.repost.resolver import resolve_channel_input
-from config import ADMIN_IDS
+from core.config import ADMIN_IDS
 
 logger = logging.getLogger(__name__)
 router = Router()

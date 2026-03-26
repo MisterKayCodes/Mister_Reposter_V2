@@ -13,7 +13,7 @@ from bot.keyboards import (
     main_menu_kb, pairs_kb, empty_pairs_kb,
     stats_pairs_kb, stats_detail_kb, back_kb
 )
-from config import ADMIN_IDS
+from core.config import ADMIN_IDS
 
 logger = logging.getLogger(__name__)
 repost_service = RepostService()

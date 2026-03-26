@@ -11,7 +11,7 @@ from aiogram import types
 from providers.telethon_client import TelethonProvider
 from data.database import async_session
 from data.repository import UserRepository
-from config import config
+from core.config import config
 
 SESSIONS_DIR = "data/sessions"
 logger = logging.getLogger(__name__)
