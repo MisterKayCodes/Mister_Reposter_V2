@@ -255,10 +255,14 @@ class RepostService:
                 # First, we check if the channel has grown (new posts). 
                 # It's like checking the total page count of a book that's still being written.
                 total = await self.telethon.get_total_messages(user_id, source)
-                if total >= 0:
-                    async with async_session() as db_session:
-                        repo = UserRepository(db_session)
-                        await repo.update_pair_total_posts(pair_id, total)
+                if total < 0:
+                    logger.warning(f"Backfill for Pair #{pair_id}: Telethon disconnected or error. Sleeping 60s.")
+                    await asyncio.sleep(60)
+                    continue
+
+                async with async_session() as db_session:
+                    repo = UserRepository(db_session)
+                    await repo.update_pair_total_posts(pair_id, total)
 
                 # If there's a 'live' message waiting (someone just posted), we let it 'cut the line'.
                 # Backfilling history is a secondary priority compared to staying up-to-date with the present.
@@ -282,13 +286,15 @@ class RepostService:
                 messages = await self.telethon.fetch_messages_from(user_id, source, current_id, limit=50)
                 
                 if not messages:
-                    # If we've reached the very last page of the book, we wrap back to the beginning.
-                    # It's a never-ending loop (recycling) to keep the channel active.
-                    logger.info(f"Backfill for Pair #{pair_id} reached the end. Recycling to message #1.")
+                    # THE SAFETY VALVE:
+                    # If messages are empty, either we are at the end OR disconnected.
+                    # We sleep to prevent the 'Infinite Spin'.
+                    logger.info(f"Backfill for Pair #{pair_id} reached the end or empty result. Throttling for 60s.")
                     current_id = 0 # Next fetch will use offset_id=0, getting ID 1
                     async with async_session() as db_session:
                         repo = UserRepository(db_session)
                         await repo.update_pair_start_id(pair_id, 1)
+                    await asyncio.sleep(60)
                     continue
 
 

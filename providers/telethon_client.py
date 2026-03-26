@@ -19,6 +19,23 @@ class TelethonProvider:
         self.api_hash = api_hash
         self.active_clients = {}
 
+    async def _ensure_connected(self, user_id: int) -> bool:
+        """The Safe-Start Reconnection Logic."""
+        client = self.active_clients.get(user_id)
+        if not client: return False
+        
+        if not client.is_connected():
+            logger.warning(f"Connection lost for User {user_id}. Reconnecting...")
+            try:
+                await client.connect()
+                if not await client.is_user_authorized():
+                    logger.critical(f"Session revoked for User {user_id}!")
+                    return False
+            except Exception as e:
+                logger.error(f"Failed to reconnect User {user_id}: {e}")
+                return False
+        return True
+
     def _get_session(self, session_data):
         if isinstance(session_data, str) and not session_data.endswith('.session'):
             return StringSession(session_data)
@@ -99,8 +116,8 @@ class TelethonProvider:
             return None
 
     async def resolve_entity(self, user_id: int, identifier: str) -> dict | None:
+        if not await self._ensure_connected(user_id): return None
         client = self.active_clients.get(user_id)
-        if not client or not client.is_connected(): return None
 
         try:
             # Rule 6: Robust Entity Resolution
@@ -123,8 +140,8 @@ class TelethonProvider:
     # Since we use 'reverse=True', it's like reading a book from a specific page 
     # forward towards the end.
     async def fetch_messages_from(self, user_id: int, source_id: str, from_msg_id: int, limit: int = 1):
+        if not await self._ensure_connected(user_id): return []
         client = self.active_clients.get(user_id)
-        if not client or not client.is_connected(): return []
 
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
@@ -146,8 +163,8 @@ class TelethonProvider:
     # This is our 'Freshness Check'. We ask Telegram if a specific message 
     # still exists and hasn't been nuked by the original owner.
     async def get_message(self, user_id: int, source_id: str | int, msg_id: int):
+        if not await self._ensure_connected(user_id): return None
         client = self.active_clients.get(user_id)
-        if not client or not client.is_connected(): return None
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
             # We ask for a specific ID. If it's gone, Telegram returns None.
@@ -157,8 +174,8 @@ class TelethonProvider:
             return None
 
     async def get_total_messages(self, user_id: int, source_id: str) -> int:
+        if not await self._ensure_connected(user_id): return -1
         client = self.active_clients.get(user_id)
-        if not client or not client.is_connected(): return -1
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
             
@@ -184,9 +201,9 @@ class TelethonProvider:
     # to the destination channel. If it's a list (an album), we handle it 
     # as a single 'package' of media files.
     async def send_message(self, user_id: int, destination: str | int, message: any) -> dict:
-        client = self.active_clients.get(user_id)
-        if not client or not client.is_connected():
+        if not await self._ensure_connected(user_id):
             return {"ok": False, "error": "disconnected"}
+        client = self.active_clients.get(user_id)
 
         try:
             target = int(destination) if str(destination).replace("-", "").isdigit() else destination
