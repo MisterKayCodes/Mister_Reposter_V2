@@ -156,8 +156,8 @@ class TelethonProvider:
             if str(source_id).replace("-", "").isdigit():
                 target = int(source_id)
             
-            # Fetch the actual entity to 'warm up' the cache
-            target = await client.get_input_entity(target)
+            # Fetch the actual entity to 'warm up' the cache and avoid Peer errors
+            target = await client.get_entity(target)
             
             messages = await client.get_messages(
                 target, 
@@ -220,8 +220,8 @@ class TelethonProvider:
             if str(destination).replace("-", "").isdigit():
                 target = int(destination)
             
-            # Senior Fix: Resolve the entity before sending to prevent 'Invalid Peer' errors
-            target = await client.get_input_entity(target)
+            # Senior Fix: Use get_entity for robust peer resolution (avoids 'Invalid Peer' on fresh starts)
+            target = await client.get_entity(target)
             
             if isinstance(message, list):
                 sent = await self._send_album(client, target, message)
@@ -255,14 +255,14 @@ class TelethonProvider:
         try:
             if isinstance(message, list):
                 # For albums, we assume all messages in the list are from the same chat
-                chat = await client.get_input_entity(message[0].peer_id)
+                chat = await client.get_entity(message[0].peer_id)
                 msg_ids = [m.id for m in message]
                 new_msgs = await client.get_messages(chat, ids=msg_ids)
                 # Keep the order consistent
                 id_map = {m.id: m for m in new_msgs if m}
                 return [id_map.get(m.id) for m in message if id_map.get(m.id)]
             else:
-                chat = await client.get_input_entity(message.peer_id)
+                chat = await client.get_entity(message.peer_id)
                 new_msg = await client.get_messages(chat, ids=message.id)
                 return new_msg
         except Exception as e:
