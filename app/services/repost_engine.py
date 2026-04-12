@@ -38,6 +38,15 @@ class RepostService:
         self._active_listeners.discard(user_id)
         await self._notify_user(user_id, f"⚠️ {reason} Bot stopped.")
 
+    async def _handle_pair_error(self, user_id, pair_id, reason):
+        """Rule 11: Granular deactivation for bad data (nuked channels)."""
+        async with async_session() as ds:
+            await UserRepository(ds).deactivate_pair_as_error(pair_id)
+        self._cancel_schedule_timer(pair_id)
+        self._cancel_backfill_task(pair_id)
+        logger.error(f"Pair #{pair_id} deactivated due to fatal error: {reason}")
+        await self._notify_user(user_id, f"🚫 <b>Pair #{pair_id} Deactivated</b>\nFatal error: {reason}\n\nPlease check if the destination channel still exists.")
+
     async def register_user(self, user_id, username):
         async with async_session() as ds:
             return await UserRepository(ds).create_or_update_user(user_id, username)

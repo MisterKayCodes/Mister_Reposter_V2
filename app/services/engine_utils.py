@@ -47,14 +47,20 @@ async def send_with_retry(service, user_id, destination, message, pair_id=None):
                     await UserRepository(ds).reset_error_count(pair_id)
             return result
         
-        if result.get("error") == "flood_wait":
+        if result.get("error_type") == "transient":
             wait = result.get("wait_seconds", 30)
             if wait > 300: return result
             await service._notify_user(user_id, f"Rate limited. Retrying in {wait}s...")
             await asyncio.sleep(wait)
             continue
+            
+        if result.get("error_type") == "fatal":
+            if pair_id:
+                asyncio.create_task(service._handle_pair_error(user_id, pair_id, result.get("detail", "Unknown fatal error")))
+            return result
+            
         return result
-    return {"ok": False, "error": "max_retries"}
+    return {"ok": False, "error": "max_retries", "error_type": "transient"}
 
 async def process_album_waiter(service, gid, user_id):
     start_time = time.time()

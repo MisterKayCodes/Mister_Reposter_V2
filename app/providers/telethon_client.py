@@ -228,6 +228,14 @@ class TelethonProvider:
             
             logger.debug(f"Resolved destination {destination} to {type(target).__name__}")
             
+            # Pre-emptive Warm-up: If message is from a peer, ensure source is known
+            try:
+                msg_list = message if isinstance(message, list) else [message]
+                if hasattr(msg_list[0], 'peer_id'):
+                    await client.get_entity(msg_list[0].peer_id)
+            except Exception as e:
+                logger.debug(f"Source warm-up skipped/failed: {e}")
+
             if isinstance(message, list):
                 sent = await self._send_album(client, target, message)
             else:
@@ -246,14 +254,23 @@ class TelethonProvider:
                         sent = await self._send_single(client, target, refreshed_msg)
                     return {"ok": True, "message": sent}
                 except Exception as e2:
-                    logger.error(f"Retry after refresh failed: {e2}")
-                    return {"ok": False, "error": "retry_failed", "detail": str(e2)}
-            return {"ok": False, "error": "refresh_failed", "detail": str(e)}
+                    logger.error(f"Retry after refresh failed for Pair #{pair_id if 'pair_id' in locals() else '?'}: {e2}")
+                    # If it's still a Peer error after refresh, it's fatal (nuked/no access)
+                    err_type = "fatal" if isinstance(e2, (PeerIdInvalidError, rpcbaseerrors.ForbiddenError)) else "retryable"
+                    return {"ok": False, "error": "retry_failed", "error_type": err_type, "detail": str(e2)}
+            return {"ok": False, "error": "refresh_failed", "error_type": "fatal", "detail": str(e)}
         except FloodWaitError as e:
-            return {"ok": False, "error": "flood_wait", "wait_seconds": e.seconds}
+            return {"ok": False, "error": "flood_wait", "error_type": "transient", "wait_seconds": e.seconds}
         except Exception as e:
-            logger.error(f"Telethon send error: {e}")
-            return {"ok": False, "error": "exception", "detail": str(e)}
+            # Check for other fatal types
+            is_fatal = isinstance(e, (rpcbaseerrors.UnauthorizedError, rpcbaseerrors.ForbiddenError))
+            if not is_fatal: logger.error(f"Telethon send error: {e}")
+            return {
+                "ok": False, 
+                "error": "exception", 
+                "error_type": "fatal" if is_fatal else "retryable",
+                "detail": str(e)
+            }
 
     async def _refresh_media_references(self, client, message):
         """Rule 11: Self-healing mechanism to avoid stale file IDs."""
