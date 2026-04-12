@@ -6,7 +6,7 @@ Handles raw communication with Telegram Servers.
 import logging
 import asyncio
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaIdInvalidError
+from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaInvalidError
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.sessions import StringSession
@@ -229,7 +229,7 @@ class TelethonProvider:
                 sent = await self._send_single(client, target, message)
                 
             return {"ok": True, "message": sent}
-        except (FileReferenceExpiredError, MediaIdInvalidError) as e:
+        except (FileReferenceExpiredError, MediaInvalidError) as e:
             logger.warning(f"File reference expired for User {user_id}. Attempting refresh and retry...")
             # Second Chance: Re-fetch and retry once
             refreshed_msg = await self._refresh_media_references(client, message)
