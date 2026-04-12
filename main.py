@@ -1,20 +1,20 @@
 """
 MISTER_REPOSTER V2: MAIN SKELETON
-The Birth of the Organism. (Anatomy: Skeleton)
-Refined for: Network Resilience and Global Error Handling.
+The Birth of the Organism (Hybrid Architecture: Bot + API).
 """
 import asyncio
 import logging
-from aiohttp import web
+import uvicorn
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.client.session.aiohttp import AiohttpSession # Added for timeout control
+from aiogram.client.session.aiohttp import AiohttpSession
 
-from bot.middleware import SessionGuardMiddleware, NetworkRetryMiddleware # Added NetworkRetry
-from core.config import config
-from data.database import init_db
-from bot.routers import register_all_routers
-from utils.log_buffer import log_buffer
+from app.bot.middleware import SessionGuardMiddleware, NetworkRetryMiddleware
+from app.core.config import config
+from app.data.database import init_db
+from app.bot.routers import register_all_routers
+from app.services.singleton import repost_service
+from app.api.server import create_app
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,59 +22,49 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-logging.getLogger().addHandler(log_buffer)
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get('/', lambda r: web.Response(text="Mister Reposter is running"))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 5555)
-    await site.start()
-    logger.info("Web server started on port 5555")
+async def run_api_server():
+    """Runs the FastAPI server as an async task."""
+    api_app = create_app()
+    config_uv = uvicorn.Config(api_app, host="0.0.0.0", port=5555, log_level="info")
+    server = uvicorn.Server(config_uv)
+    await server.serve()
 
 async def main():
-    # 1. ENHANCED SESSION: Increased timeout to 60s to survive "Semaphore Timeouts"
+    # 1. GATEKEEPERS
+    from app.infrastructure.checks.architecture_inspector import scan_organism
+    if not scan_organism():
+        logger.critical("Architecture Integrity Check FAILED.")
+        return
+
+    # 2. INITIALIZATION
+    await init_db()
+    logger.info("Database initialized.")
+
     session = AiohttpSession(timeout=60)
-    bot = Bot(
-        token=config.BOT_TOKEN.get_secret_value(),
-        session=session
-    )
+    bot = Bot(token=config.BOT_TOKEN.get_secret_value(), session=session)
+    repost_service.set_bot(bot)
+    await repost_service.recover_all_listeners()
+    
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.update.outer_middleware(NetworkRetryMiddleware())
+    dp.message.outer_middleware(SessionGuardMiddleware())
+    register_all_routers(dp)
+    
+    logger.info("Hybrid Organism is ready. Starting Bot + API...")
 
-    await start_web_server()
-
+    # 3. HYBRID BOOT: Bot Polling + FastAPI
     try:
-        await init_db()
-        logger.info("Database initialized and tables created.")
-
-        from bot.handlers.utils import repost_service
-        repost_service.set_bot(bot)
-        await repost_service.recover_all_listeners()
-        logger.info("Startup Recovery complete: All active listeners resumed.")
-
-        dp = Dispatcher(storage=MemoryStorage())
-        
-        # 2. THE SHIELD: Register NetworkRetryMiddleware globally
-        # We put it first so it catches errors from all handlers
-        dp.update.outer_middleware(NetworkRetryMiddleware())
-        dp.message.outer_middleware(SessionGuardMiddleware())
-        
-        register_all_routers(dp)
-        logger.info("Bot routers registered successfully.")
-
-        logger.info("Mister_Reposter is now online. Polling...")
-        
-        # 3. POLLING SETUP: Added allowed_updates for faster response
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-
+        await asyncio.gather(
+            dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types()),
+            run_api_server()
+        )
     except Exception as e:
-        logger.critical(f"Organism failed to boot: {e}")
+        logger.critical(f"Organism failed: {e}")
     finally:
-        # Close session properly
         await bot.session.close()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Organism put to sleep by user.")
+        logger.info("Organism put to sleep.")
