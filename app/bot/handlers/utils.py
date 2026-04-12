@@ -77,7 +77,7 @@ def _add_backfill_stats(lines: list, stats: dict):
         lines.append(f"📦 <b>Progress:</b> {stats['current']} / {total}")
         lines.append(f"📥 <b>Remaining:</b> {stats['remaining']} posts")
         _add_next_post_info(lines, stats)
-        loop = "ON" if getattr(stats, "loop_history", False) else "OFF"
+        loop = "ON" if stats.get("loop_history") else "OFF"
         lines.append(f"♻️ <b>Recycling:</b> {loop}")
     elif total == 0:
         lines.append("⚠️ <b>Source appears to be empty.</b>")
@@ -86,14 +86,12 @@ def _add_backfill_stats(lines: list, stats: dict):
     else:
         lines.append("<i>🔄 Stats pending...</i>")
 
-def _add_next_post_info(lines: list, stats: dict):
+    lines.append(f"🏁 <b>Est. Finish:</b> {format_time_left(stats['time_left_min'])}")
     next_p = stats.get("next_post")
     if next_p:
         time_until = int(max(0, next_p["time"] - time.time()) / 60)
         lines.append(f"⏳ <b>Next Post In:</b> {format_time_left(time_until)}")
         lines.append(f"📄 <b>Preview:</b> <code>{next_p['preview']}</code>")
-    else:
-        lines.append(f"⏳ <b>Est. Finish:</b> {format_time_left(stats['time_left_min'])}")
 
 async def render_main_menu(target: types.Message, user_id: int = None, edit: bool = True):
     has_session = False
