@@ -41,15 +41,25 @@ async def run_backfill(service, user_id, source, destination, from_msg_id, filte
                     continue
                 break
 
+            batch_advanced = False
             for msg in messages:
                 if not msg: continue
-                # Ghost Check
-                if not await _is_msg_valid(service, user_id, source, msg, pair_id):
+                ghost_status = await _check_ghost(service, user_id, source, msg, pair_id)
+                if ghost_status == "ghost":
+                    logger.info(f"Pair #{pair_id}: Skipping ghost msg #{msg.id}")
                     current_id = msg.id
+                    batch_advanced = True
                     continue
+                if ghost_status == "error":
+                    break
 
                 stop, current_id = await _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes)
+                batch_advanced = True
                 if stop: break
+
+            if batch_advanced:
+                async with async_session() as ds:
+                    await UserRepository(ds).update_pair_start_id(pair_id, current_id + 1)
                 
         except rpcbaseerrors.UnauthorizedError:
             await service._handle_fatal_error(user_id, pair_id, "Session revoked.")
@@ -103,16 +113,16 @@ async def _handle_cycle_end(service, user_id, pair, pair_id):
     await asyncio.sleep(60)
     return False
 
-async def _is_msg_valid(service, user_id, source, msg, pair_id):
+async def _check_ghost(service, user_id, source, msg, pair_id):
+    """Returns 'ok', 'ghost', or 'error'."""
     try:
         fresh = await service.telethon.get_message(user_id, source, msg.id)
         if not fresh:
-            async with async_session() as ds:
-                await UserRepository(ds).update_pair_start_id(pair_id, msg.id + 1)
-            return False
-        return True
-    except Exception:
-        return False
+            return "ghost"
+        return "ok"
+    except Exception as e:
+        logger.warning(f"Ghost check failed for msg #{msg.id}: {e}")
+        return "error"
 
 async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, interval):
     from app.core.repost.logic import MessageCleaner
