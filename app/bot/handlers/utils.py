@@ -86,6 +86,8 @@ def _add_backfill_stats(lines: list, stats: dict):
     else:
         lines.append("<i>🔄 Stats pending...</i>")
 
+
+def _add_next_post_info(lines: list, stats: dict):
     lines.append(f"🏁 <b>Est. Finish:</b> {format_time_left(stats['time_left_min'])}")
     next_p = stats.get("next_post")
     if next_p:
