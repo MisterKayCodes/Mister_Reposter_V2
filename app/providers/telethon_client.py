@@ -6,7 +6,7 @@ Handles raw communication with Telegram Servers.
 import logging
 import asyncio
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError
+from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError, rpcbaseerrors
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.sessions import StringSession
@@ -210,7 +210,7 @@ class TelethonProvider:
     # This is our 'Delivery' service. We take a message and hand it over 
     # to the destination channel. If it's a list (an album), we handle it 
     # as a single 'package' of media files.
-    async def send_message(self, user_id: int, destination: str | int, message: any) -> dict:
+    async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None) -> dict:
         if not await self._ensure_connected(user_id):
             return {"ok": False, "error": "disconnected"}
         client = self.active_clients.get(user_id)
@@ -254,7 +254,7 @@ class TelethonProvider:
                         sent = await self._send_single(client, target, refreshed_msg)
                     return {"ok": True, "message": sent}
                 except Exception as e2:
-                    logger.error(f"Retry after refresh failed for Pair #{pair_id if 'pair_id' in locals() else '?'}: {e2}")
+                    logger.error(f"Retry after refresh failed for Pair #{pair_id or '?'}: {e2}")
                     # If it's still a Peer error after refresh, it's fatal (nuked/no access)
                     err_type = "fatal" if isinstance(e2, (PeerIdInvalidError, rpcbaseerrors.ForbiddenError)) else "retryable"
                     return {"ok": False, "error": "retry_failed", "error_type": err_type, "detail": str(e2)}
