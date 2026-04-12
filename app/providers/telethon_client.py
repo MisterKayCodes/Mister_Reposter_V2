@@ -6,7 +6,7 @@ Handles raw communication with Telegram Servers.
 import logging
 import asyncio
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaInvalidError
+from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.sessions import StringSession
@@ -220,8 +220,13 @@ class TelethonProvider:
             if str(destination).replace("-", "").isdigit():
                 target = int(destination)
             
-            # Senior Fix: Use get_entity for robust peer resolution (avoids 'Invalid Peer' on fresh starts)
-            target = await client.get_entity(target)
+            # Ultra-Robust Peer Resolution: Try cache first, then server
+            try:
+                target = await client.get_input_entity(target)
+            except Exception:
+                target = await client.get_entity(target)
+            
+            logger.debug(f"Resolved destination {destination} to {type(target).__name__}")
             
             if isinstance(message, list):
                 sent = await self._send_album(client, target, message)
@@ -229,8 +234,8 @@ class TelethonProvider:
                 sent = await self._send_single(client, target, message)
                 
             return {"ok": True, "message": sent}
-        except (FileReferenceExpiredError, MediaInvalidError) as e:
-            logger.warning(f"File reference expired for User {user_id}. Attempting refresh and retry...")
+        except (FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError) as e:
+            logger.warning(f"Resend failure ({type(e).__name__}) for User {user_id}. Attempting refresh and retry...")
             # Second Chance: Re-fetch and retry once
             refreshed_msg = await self._refresh_media_references(client, message)
             if refreshed_msg:

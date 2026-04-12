@@ -34,13 +34,27 @@ async def test_pair_resolution(client, pair_id, source, destination):
         d_ent = await client.get_entity(destination)
         print(f"    ✅ Destination OK: {type(d_ent).__name__} (ID: {d_ent.id})")
         
-        # 3. Test "Input" Peer (what SendMediaRequest actually uses)
+        # 3. Test "Input" Peer
         try:
             print(f"  Checking InputPeer capability...")
             input_peer = await client.get_input_entity(d_ent)
             print(f"    ✅ InputPeer OK: {type(input_peer).__name__}")
+            
+            # 4. ACTUAL SEND TEST (Text)
+            print("  Attempting Text Send Test...")
+            await client.send_message(d_ent, "🛠 Mister Diagnostic: Text Peer Test")
+            print("    ✅ Text Send OK!")
+            
+            # 5. ACTUAL SEND TEST (Media - using a small buffer)
+            print("  Attempting Media Send Test (Small Buffer)...")
+            from io import BytesIO
+            bio = BytesIO(b"test")
+            bio.name = "test.txt"
+            await client.send_file(d_ent, bio, caption="🛠 Mister Diagnostic: Media Peer Test")
+            print("    ✅ Media Send OK!")
+
         except Exception as e:
-            print(f"    ❌ InputPeer FAIL: {e}")
+            print(f"    ❌ Send Test FAIL: {e}")
             
     except PeerIdInvalidError:
         print(f"    ❌ Destination FAIL: Invalid Peer. This usually means the account hasn't 'seen' this entity yet.")
