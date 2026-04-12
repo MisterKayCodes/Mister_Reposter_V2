@@ -29,8 +29,15 @@ class RepostService:
 
     async def _notify_user(self, user_id, text):
         if self._bot:
-            try: await self._bot.send_message(user_id, text, parse_mode="HTML")
-            except Exception as e: logger.error(f"Notify failed {user_id}: {e}")
+            try:
+                await self._bot.send_message(user_id, text, parse_mode="HTML")
+            except Exception as e:
+                err_msg = str(e).lower()
+                logger.error(f"Notify failed {user_id}: {e}")
+                if "deactivated" in err_msg or "blocked" in err_msg:
+                    # Rule 11: Real-time Dead Account Cleanup
+                    logger.critical(f"User {user_id} account is dead or bot was blocked. Stopping all loops for this user.")
+                    asyncio.create_task(self._handle_fatal_error(user_id, 0, "Account Deactivated/Blocked"))
 
     async def _handle_fatal_error(self, user_id, pair_id, reason):
         await self.deactivate_pair(user_id, pair_id)

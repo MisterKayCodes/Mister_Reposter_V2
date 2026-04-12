@@ -8,6 +8,7 @@ import time
 from app.data.database import async_session
 from app.data.repository import UserRepository
 from telethon.errors import rpcbaseerrors
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,18 @@ async def run_backfill(service, user_id, source, destination, from_msg_id, filte
                     break
 
             await _check_3day_alert(service, user_id, pair, current_id, total, interval_minutes)
+
+            # Rule 11: Persistent Timer - Respect the cooldown across restarts
+            now = datetime.utcnow()
+            if pair.next_allowed_post_at and pair.next_allowed_post_at > now:
+                wait_seconds = (pair.next_allowed_post_at - now).total_seconds()
+                logger.info(f"Pair #{pair_id}: Respecting persistent timer. Sleeping {int(wait_seconds)}s.")
+                # Update UI info even while sleeping
+                service.next_post_info[pair_id] = {
+                    "time": time.time() + wait_seconds,
+                    "preview": "Timer Sync..."
+                }
+                await asyncio.sleep(wait_seconds)
 
             messages = await service.telethon.fetch_messages_from(user_id, source, current_id, limit=50)
             if not messages:
@@ -131,6 +144,10 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
         
     result = await service._send_with_retry(user_id, dest, msg, pair_id=pair_id)
     if result["ok"]:
+        next_dt = datetime.utcnow() + timedelta(minutes=interval)
+        async with async_session() as ds:
+            await UserRepository(ds).update_next_post_time(pair_id, next_dt)
+        
         service.next_post_info[pair_id] = {
             "time": time.time() + (interval * 60),
             "preview": (msg.message[:13] + "...") if msg.message else "[Media]"

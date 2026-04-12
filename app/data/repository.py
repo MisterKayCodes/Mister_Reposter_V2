@@ -210,6 +210,18 @@ class UserRepository:
             return True
         return False
 
+    async def update_next_post_time(self, pair_id: int, next_time):
+        """Rule 11: Persists the timer for restart resilience."""
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.next_allowed_post_at = next_time
+            await self.session.commit()
+            return True
+        return False
+
     async def toggle_pair_loop(self, user_id: int, pair_id: int) -> bool:
         result = await self.session.execute(
             select(RepostPair).where(
