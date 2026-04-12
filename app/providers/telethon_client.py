@@ -6,7 +6,7 @@ Handles raw communication with Telegram Servers.
 import logging
 import asyncio
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError
+from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaIdInvalidError
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.sessions import StringSession
@@ -229,11 +229,45 @@ class TelethonProvider:
                 sent = await self._send_single(client, target, message)
                 
             return {"ok": True, "message": sent}
+        except (FileReferenceExpiredError, MediaIdInvalidError) as e:
+            logger.warning(f"File reference expired for User {user_id}. Attempting refresh and retry...")
+            # Second Chance: Re-fetch and retry once
+            refreshed_msg = await self._refresh_media_references(client, message)
+            if refreshed_msg:
+                try:
+                    if isinstance(refreshed_msg, list):
+                        sent = await self._send_album(client, target, refreshed_msg)
+                    else:
+                        sent = await self._send_single(client, target, refreshed_msg)
+                    return {"ok": True, "message": sent}
+                except Exception as e2:
+                    logger.error(f"Retry after refresh failed: {e2}")
+                    return {"ok": False, "error": "retry_failed", "detail": str(e2)}
+            return {"ok": False, "error": "refresh_failed", "detail": str(e)}
         except FloodWaitError as e:
             return {"ok": False, "error": "flood_wait", "wait_seconds": e.seconds}
         except Exception as e:
             logger.error(f"Telethon send error: {e}")
             return {"ok": False, "error": "exception", "detail": str(e)}
+
+    async def _refresh_media_references(self, client, message):
+        """Rule 11: Self-healing mechanism to avoid stale file IDs."""
+        try:
+            if isinstance(message, list):
+                # For albums, we assume all messages in the list are from the same chat
+                chat = await client.get_input_entity(message[0].peer_id)
+                msg_ids = [m.id for m in message]
+                new_msgs = await client.get_messages(chat, ids=msg_ids)
+                # Keep the order consistent
+                id_map = {m.id: m for m in new_msgs if m}
+                return [id_map.get(m.id) for m in message if id_map.get(m.id)]
+            else:
+                chat = await client.get_input_entity(message.peer_id)
+                new_msg = await client.get_messages(chat, ids=message.id)
+                return new_msg
+        except Exception as e:
+            logger.error(f"Failed to refresh media references: {e}")
+            return None
 
     async def _send_album(self, client, target, messages):
         media_list = []

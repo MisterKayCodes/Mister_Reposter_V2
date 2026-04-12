@@ -135,6 +135,9 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
             "time": time.time() + (interval * 60),
             "preview": (msg.message[:13] + "...") if msg.message else "[Media]"
         }
+    else:
+        # Prevent "0m" stuck state in UI
+        service.next_post_info.pop(pair_id, None)
     return result
 
 async def flush_schedule_loop(service, pair_id, interval_minutes):
