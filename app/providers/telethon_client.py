@@ -151,11 +151,14 @@ class TelethonProvider:
         client = self.active_clients.get(user_id)
 
         try:
-            target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
+            # Resolve target once to avoid Peer errors
+            target = source_id
+            if str(source_id).replace("-", "").isdigit():
+                target = int(source_id)
             
-            # Mister, we change 'min_id' to 'offset_id' and set 'reverse=True'
-            # This forces Telethon to start at 19 and look FORWARD to 20, 21...
-            # instead of starting at the newest and looking back.
+            # Fetch the actual entity to 'warm up' the cache
+            target = await client.get_input_entity(target)
+            
             messages = await client.get_messages(
                 target, 
                 offset_id=from_msg_id, 
@@ -213,7 +216,12 @@ class TelethonProvider:
         client = self.active_clients.get(user_id)
 
         try:
-            target = int(destination) if str(destination).replace("-", "").isdigit() else destination
+            target = destination
+            if str(destination).replace("-", "").isdigit():
+                target = int(destination)
+            
+            # Senior Fix: Resolve the entity before sending to prevent 'Invalid Peer' errors
+            target = await client.get_input_entity(target)
             
             if isinstance(message, list):
                 sent = await self._send_album(client, target, message)
