@@ -38,6 +38,10 @@ class RepostService:
         self._active_listeners.discard(user_id)
         await self._notify_user(user_id, f"⚠️ {reason} Bot stopped.")
 
+    async def register_user(self, user_id, username):
+        async with async_session() as ds:
+            return await UserRepository(ds).create_or_update_user(user_id, username)
+
     async def user_has_session(self, user_id):
         async with async_session() as ds:
             user = await UserRepository(ds).get_user(user_id)
@@ -46,6 +50,15 @@ class RepostService:
     async def get_user_pairs(self, user_id):
         async with async_session() as ds:
             return await UserRepository(ds).get_user_pairs(user_id)
+
+    async def delete_all_user_pairs(self, user_id):
+        async with async_session() as ds:
+            repo = UserRepository(ds)
+            pairs = await repo.get_user_pairs(user_id)
+            for p in pairs:
+                self._cancel_schedule_timer(p.id)
+                self._cancel_backfill_task(p.id)
+            return await repo.delete_all_pairs(user_id)
 
     async def delete_single_pair(self, user_id, pair_id):
         self._cancel_schedule_timer(pair_id)
