@@ -46,9 +46,16 @@ async def render_pair_stats(message: types.Message, user_id: int, pair_id: int):
         if not stats:
             return await message.edit_text("❌ Pair not found.", reply_markup=back_kb())
 
+        pairs = await repost_service.get_user_pairs(user_id)
+        local_idx = 1
+        for i, p in enumerate(pairs, 1):
+            if p.id == stats['id']:
+                local_idx = i
+                break
+
         label = SCHEDULE_LABELS.get(stats["schedule"], "Instant")
         now = datetime.now().strftime("%H:%M:%S")
-        lines = [f"<b>📊 Stats for Pair #{stats['id']}</b>", f"<i>(Updated: {now})</i>\n"]
+        lines = [f"<b>📊 Stats for Pair #{local_idx}</b>", f"<i>(Updated: {now})</i>\n"]
         
         if stats.get("last_error"):
             lines.append(f"⚠️ <b>PAUSED:</b> {translate_error(stats['last_error'])}\n")
@@ -136,11 +143,11 @@ async def render_pairs_view(message: types.Message, user_id: int):
             return await message.edit_text("<b>No pairs yet.</b>", reply_markup=empty_pairs_kb(), parse_mode="HTML")
 
         lines = [f"<b>Your Repost Pairs ({len(pairs)}/{MAX_PAIRS})</b>\n"]
-        for p in pairs:
+        for idx, p in enumerate(pairs, 1):
             status = "🟢 Active" if p.is_active else "🟡 Paused"
             if getattr(p, "status", "") == "error": status = "🔴 Error"
             
-            lines.append(f"<b>#{p.id} [{status}]</b>")
+            lines.append(f"<b>Pair #{idx} [{status}]</b>")
             lines.append(f"<code>{p.source_id}</code> ➔ <code>{p.destination_id}</code>")
             
             if status == "🔴 Error":

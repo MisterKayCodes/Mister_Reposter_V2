@@ -110,12 +110,12 @@ async def _check_3day_alert(service, user_id, pair, current_id, total, interval)
     remaining = total - current_id
     if remaining > 0 and interval > 0:
         if (remaining * interval) <= 4320 and not pair.alerted_3d:
-            await service._notify_user(user_id, f"⚠️ <b>Low Inventory Alert</b>\nPair #{pair.id} has < 3 days remaining.")
+            await service._notify_user(user_id, f"⚠️ <b>Low Inventory Alert</b>\nOne of your Pairs has < 3 days remaining.")
             async with async_session() as ds:
                 await UserRepository(ds).update_alert_3d(pair.id, True)
 
 async def _handle_cycle_end(service, user_id, pair, pair_id):
-    await service._notify_user(user_id, f"🎉 <b>Cycle Complete</b>\nPair #{pair_id} finished.")
+    await service._notify_user(user_id, f"🎉 <b>Cycle Complete</b>\nOne of your Pairs has finished!")
     if pair.loop_history:
         async with async_session() as ds:
             repo = UserRepository(ds)

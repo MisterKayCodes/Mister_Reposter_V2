@@ -52,7 +52,7 @@ class RepostService:
         self._cancel_schedule_timer(pair_id)
         self._cancel_backfill_task(pair_id)
         logger.error(f"Pair #{pair_id} deactivated due to fatal error: {reason}")
-        await self._notify_user(user_id, f"🚫 <b>Pair #{pair_id} Deactivated</b>\nFatal error: {reason}\n\nPlease check if the destination channel still exists.")
+        await self._notify_user(user_id, f"🚫 <b>A Pair was Deactivated</b>\nFatal error: {reason}\n\nPlease check if the destination channel still exists.")
 
     async def register_user(self, user_id, username):
         async with async_session() as ds:

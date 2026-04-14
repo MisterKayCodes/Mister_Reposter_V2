@@ -236,7 +236,7 @@ async def cb_ask_delete(callback: types.CallbackQuery):
     await safe_callback_answer(callback)
     pair_id = int(callback.data.split("_")[1])
     await callback.message.edit_text(
-        f"<b>⚠️ Delete Pair #{pair_id}?</b>\n\nThis cannot be undone.",
+        f"<b>⚠️ Delete this Pair?</b>\n\nThis cannot be undone.",
         reply_markup=delete_confirm_kb(pair_id),
         parse_mode="HTML"
     )

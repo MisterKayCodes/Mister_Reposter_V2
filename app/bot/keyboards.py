@@ -52,17 +52,17 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
 
 def pairs_kb(pairs):
     builder = InlineKeyboardBuilder()
-    for p in pairs:
+    for idx, p in enumerate(pairs, 1):
         if getattr(p, "status", "") == "error":
-            label = "🔄 Clear & Resume"
+            label = "🔄 Clear"
         else:
             label = "Pause" if p.is_active else "Play"
-        builder.button(text=f"{label} #{p.id}", callback_data=f"tog_{p.id}")
+        builder.button(text=f"{label} #{idx}", callback_data=f"tog_{p.id}")
         
         loop_label = "♻️ Loop: ON" if getattr(p, "loop_history", False) else "♻️ Loop: OFF"
         builder.button(text=loop_label, callback_data=f"loop_{p.id}")
         
-        builder.button(text=f"Delete #{p.id}", callback_data=f"del_{p.id}")
+        builder.button(text=f"Delete #{idx}", callback_data=f"del_{p.id}")
     if len(pairs) < MAX_PAIRS:
         builder.button(text="+ New Pair", callback_data="create")
     builder.button(text="Back", callback_data="main")
@@ -175,8 +175,8 @@ def logs_kb():
 
 def stats_pairs_kb(pairs):
     builder = InlineKeyboardBuilder()
-    for p in pairs:
-        builder.button(text=f"📊 Pair #{p.id}", callback_data=f"statp_{p.id}")
+    for idx, p in enumerate(pairs, 1):
+        builder.button(text=f"📊 Pair #{idx}", callback_data=f"statp_{p.id}")
     builder.button(text="🔙 Back", callback_data="main")
     builder.adjust(1)
     return builder.as_markup()
