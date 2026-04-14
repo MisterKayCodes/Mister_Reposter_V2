@@ -136,7 +136,17 @@ class RepostService:
             pairs = await UserRepository(ds).get_user_pairs(user_id)
             for p in pairs:
                 if not p.is_active or p.status == "error": continue
+                
                 src = str(p.source_id)
+                
+                # Rule 11: Dynamic Username Resolution for instant triggers
+                if src.startswith("@") or src.startswith("http"):
+                    res = await self.telethon.resolve_entity(user_id, src)
+                    if res and res.get("id"):
+                        resolved_id = str(res["id"])
+                        # Some resolved IDs might already include -100 depending on Telethon version
+                        src = resolved_id if resolved_id.startswith("-100") else f"-100{resolved_id}"
+                
                 if norm_cid == (src if src.startswith("-100") else f"-100{src}"):
                     await self._process_matched_pair(p, user_id, messages)
                     break
