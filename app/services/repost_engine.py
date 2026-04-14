@@ -140,7 +140,8 @@ class RepostService:
                 src = str(p.source_id)
                 
                 # Rule 11: Dynamic Username Resolution for instant triggers
-                if src.startswith("@") or src.startswith("http"):
+                # If it's not a pure number (with optional '-'), it must be a username/link
+                if not src.replace("-", "").isdigit():
                     res = await self.telethon.resolve_entity(user_id, src)
                     if res and res.get("id"):
                         resolved_id = str(res["id"])
