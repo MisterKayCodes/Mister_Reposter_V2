@@ -3,6 +3,7 @@ BOT: HANDLER UTILITIES
 Shared render helpers used across handler modules.
 """
 from aiogram import types
+from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 from datetime import datetime
 import time
@@ -14,9 +15,44 @@ from app.bot.keyboards import (
     stats_pairs_kb, stats_detail_kb, back_kb,
     client_main_menu_kb, client_channels_kb, client_stats_kb
 )
+from app.core.repost.resolver import resolve_channel_input
 from app.core.config import ADMIN_IDS
 
 logger = logging.getLogger(__name__)
+
+
+# --- TECH UTILS ---
+
+async def safe_callback_answer(callback: types.CallbackQuery, text: str = None, show_alert: bool = False):
+    """Rule 12: Prevents 'Query is too old' crashes."""
+    try:
+        await callback.answer(text, show_alert=show_alert)
+    except TelegramBadRequest as e:
+        logger.debug(f"Query too old: {e}")
+
+async def handle_channel_input(message: types.Message, state: FSMContext, step_name: str):
+    """Rule 5 & 16: Standardized resolution logic."""
+    if message.text and message.text.startswith("/"):
+        return await message.answer("Please provide a channel, not a command.")
+
+    resolved = resolve_channel_input(
+        message.text if not message.forward_from_chat else None, 
+        forwarded_chat=message.forward_from_chat
+    )
+
+    if not resolved["identifier"]:
+        await message.answer(
+            "Could not parse that input.\n"
+            "Try a link, @username, or forward a message from the channel."
+        )
+        return None
+
+    await state.update_data({
+        f"{step_name}_id": resolved["identifier"],
+        f"{step_name}_kind": resolved["kind"],
+        f"{step_name}_invite_hash": resolved.get("invite_hash"),
+    })
+    return resolved
 
 
 def translate_error(error_str: str) -> str:
@@ -224,12 +260,13 @@ async def render_client_pair_stats(message: types.Message, user_id: int, pair_id
         if stats.get("last_error"): 
             status = "⚠️ Issue detected (In progress)"
 
+        mode_label = "Real-time" if not stats['schedule'] else f"Digest every {stats['schedule']}m"
         lines = [
             f"<b>📊 Progress: {stats['destination']}</b>\n",
             f"✅ <b>Status:</b> {status}",
             f"📬 <b>Total Delivered:</b> {stats['total'] if stats['total'] > 0 else 'Calculating...'}",
             "──────────────────",
-            f"🕒 <b>Mode:</b> {'Real-time' if not stats['schedule'] else f'Digest every {stats['schedule']}m'}",
+            f"🕒 <b>Mode:</b> {mode_label}",
             f"📡 <b>Sources Connected:</b> 1" # Simplification
         ]
 

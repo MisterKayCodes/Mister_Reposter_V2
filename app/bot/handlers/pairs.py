@@ -1,102 +1,25 @@
 """
-BOT: PAIR HANDLERS
-Complete flow for creating, toggling, and deleting repost pairs.
-Matches states.py and keyboards.py word-to-word.
+BOT: PAIR CREATION FLOW (FSM)
+Refactored to meet line limits (Rule 3).
+Handles the step-by-step setup of new repost pairs.
 """
 import logging
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
-from aiogram.exceptions import TelegramBadRequest
 
 from app.bot.states import CreatePair
 from app.bot.keyboards import (
-    MAX_PAIRS, SCHEDULE_LABELS, FILTER_LABELS,
-    cancel_kb, filter_kb, schedule_kb,
-    delete_confirm_kb, session_required_kb,
-    limit_reached_kb, main_menu_kb, start_msg_kb,
-    confirm_pair_kb,
+    MAX_PAIRS, cancel_kb, filter_kb, schedule_kb,
+    session_required_kb, limit_reached_kb, main_menu_kb, 
+    start_msg_kb, confirm_pair_kb, FILTER_LABELS, SCHEDULE_LABELS
 )
 from app.bot.handlers.utils import (
-    render_pairs_view, repost_service, 
-    render_client_dashboard, render_client_stats_menu
+    repost_service, safe_callback_answer, handle_channel_input
 )
-from app.core.repost.resolver import resolve_channel_input
 from app.core.config import ADMIN_IDS
 
 logger = logging.getLogger(__name__)
 router = Router()
-
-# --- UTILS ---
-
-async def safe_callback_answer(callback: types.CallbackQuery, text: str = None, show_alert: bool = False):
-    """Rule 12: Prevents 'Query is too old' crashes."""
-    try:
-        await callback.answer(text, show_alert=show_alert)
-    except TelegramBadRequest as e:
-        logger.debug(f"Query too old: {e}")
-
-async def handle_channel_input(message: types.Message, state: FSMContext, step_name: str):
-    """Rule 5 & 16: Standardized resolution logic."""
-    if message.text and message.text.startswith("/"):
-        return await message.answer("Please provide a channel, not a command.")
-
-    resolved = resolve_channel_input(
-        message.text if not message.forward_from_chat else None, 
-        forwarded_chat=message.forward_from_chat
-    )
-
-    if not resolved["identifier"]:
-        await message.answer(
-            "Could not parse that input.\n"
-            "Try a link, @username, or forward a message from the channel."
-        )
-        return None
-
-    await state.update_data({
-        f"{step_name}_id": resolved["identifier"],
-        f"{step_name}_kind": resolved["kind"],
-        f"{step_name}_invite_hash": resolved.get("invite_hash"),
-    })
-    return resolved
-
-# --- TOGGLE & LIST HANDLERS ---
-
-@router.callback_query(F.data.startswith("tog_"))
-async def cb_toggle_pair(callback: types.CallbackQuery):
-    await safe_callback_answer(callback, "🔄 Processing...") 
-    pair_id = int(callback.data.split("_")[1])
-    user_id = callback.from_user.id
-
-    try:
-        pairs = await repost_service.get_user_pairs(user_id)
-        target = next((p for p in pairs if p.id == pair_id), None)
-
-        if not target:
-            return await safe_callback_answer(callback, "❌ Pair not found.", show_alert=True)
-
-        if target.is_active:
-            await repost_service.deactivate_pair(user_id, pair_id)
-        else:
-            await repost_service.activate_pair(user_id, pair_id)
-        
-        await render_pairs_view(callback.message, user_id)
-    except Exception as e:
-        logger.error(f"Toggle failed: {e}")
-        await safe_callback_answer(callback, "⚠️ Connection lag.", show_alert=True)
-
-@router.callback_query(F.data.startswith("loop_"))
-async def cb_toggle_loop(callback: types.CallbackQuery):
-    pair_id = int(callback.data.split("_")[1])
-    user_id = callback.from_user.id
-    
-    try:
-        new_state = await repost_service.toggle_pair_recycling(user_id, pair_id)
-        status = "ENABLED" if new_state else "DISABLED"
-        await safe_callback_answer(callback, f"♻️ Smart Loop: {status}")
-        await render_pairs_view(callback.message, user_id)
-    except Exception as e:
-        logger.error(f"Loop toggle failed: {e}")
-        await safe_callback_answer(callback, "⚠️ Error updating setting.", show_alert=True)
 
 # --- CREATE FLOW (FSM) ---
 
@@ -236,81 +159,3 @@ async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logger.error(f"Create failed: {e}")
         await callback.message.answer("⚠️ Database error. Try clicking Confirm again.", reply_markup=confirm_pair_kb())
-
-# --- DELETE LOGIC ---
-
-@router.callback_query(F.data.startswith("del_"))
-async def cb_ask_delete(callback: types.CallbackQuery):
-    await safe_callback_answer(callback)
-    pair_id = int(callback.data.split("_")[1])
-    await callback.message.edit_text(
-        f"<b>⚠️ Delete this Pair?</b>\n\nThis cannot be undone.",
-        reply_markup=delete_confirm_kb(pair_id),
-        parse_mode="HTML"
-    )
-
-@router.callback_query(F.data.startswith("cdel_"))
-async def cb_execute_delete(callback: types.CallbackQuery):
-    await safe_callback_answer(callback, "🧨 Deleting...")
-    pair_id = int(callback.data.split("_")[1])
-    user_id = callback.from_user.id
-    try:
-        if await repost_service.delete_single_pair(user_id, pair_id):
-            await render_pairs_view(callback.message, user_id)
-        else:
-            await safe_callback_answer(callback, "❌ Not found.", show_alert=True)
-    except Exception as e:
-        logger.error(f"Delete failed: {e}")
-        await safe_callback_answer(callback, "⚠️ Error.", show_alert=True)
-
-
-# --- CLIENT-FACING HANDLERS (SIMPLE UI) ---
-
-@router.callback_query(F.data == "c_support")
-async def cb_client_support(callback: types.CallbackQuery):
-    """Shows support options for clients."""
-    from app.bot.keyboards import client_support_kb
-    await callback.message.edit_text(
-        "<b>💬 Customer Support</b>\n\n"
-        "Need to add a source? Found a bug? Just message me directly.",
-        reply_markup=client_support_kb(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("c_tog_"))
-async def cb_client_toggle_pair(callback: types.CallbackQuery):
-    """Simple toggle for clients."""
-    pair_id = int(callback.data.split("_")[2])
-    user_id = callback.from_user.id
-    
-    try:
-        pairs = await repost_service.get_user_pairs(user_id)
-        target = next((p for p in pairs if p.id == pair_id), None)
-        
-        if target:
-            if target.is_active:
-                await repost_service.deactivate_pair(user_id, pair_id)
-                await callback.answer("⏸ Channel Paused.")
-            else:
-                await repost_service.activate_pair(user_id, pair_id)
-                await callback.answer("▶️ Channel Resumed.")
-        
-        await render_client_stats_menu(callback.message, user_id)
-    except Exception as e:
-        logger.error(f"Client toggle failed: {e}")
-        await callback.answer("⚠️ Connection error.", show_alert=True)
-
-
-@router.callback_query(F.data == "c_pauseall")
-async def cb_client_pause_all(callback: types.CallbackQuery):
-    """Pause everything for the client."""
-    user_id = callback.from_user.id
-    try:
-        await repost_service.deactivate_all_user_pairs(user_id)
-        await callback.answer("🛑 All channels paused.")
-        await render_client_dashboard(callback.message, user_id)
-    except Exception as e:
-        logger.error(f"Client pause all failed: {e}")
-        await callback.answer("⚠️ Action failed.", show_alert=True)
