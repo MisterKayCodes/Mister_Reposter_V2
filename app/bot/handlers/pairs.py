@@ -186,8 +186,14 @@ async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
         
         if target_id != admin_id:
             from app.bot.keyboards import user_detail_kb
-            target_user = await repost_service.user_repo.get_user(target_id)
-            kb = user_detail_kb(target_id, target_user.is_admin, target_user.is_premium)
+            from app.data.database import async_session as ds_gen
+            from app.data.repository import UserRepository
+            
+            async with ds_gen() as ds:
+                repo = UserRepository(ds)
+                target_user = await repo.get_user(target_id)
+                kb = user_detail_kb(target_id, target_user.is_admin, target_user.is_premium)
+                
             await callback.message.edit_text(f"<b>✅ Pair Created for User {target_id}!</b>", reply_markup=kb, parse_mode="HTML")
         else:
             is_adm = await repost_service.is_admin(admin_id)
