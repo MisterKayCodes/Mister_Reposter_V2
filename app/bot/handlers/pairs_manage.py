@@ -81,3 +81,49 @@ async def cb_execute_delete(callback: types.CallbackQuery):
     except Exception as e:
         logger.error(f"Delete failed: {e}")
         await safe_callback_answer(callback, "⚠️ Error.", show_alert=True)
+
+
+# --- REMOTE ADMIN HANDLERS ---
+
+@router.callback_query(F.data.startswith("utog_"))
+async def cb_remote_toggle(callback: types.CallbackQuery):
+    if not await repost_service.is_admin(callback.from_user.id): return
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    
+    pairs = await repost_service.get_user_pairs(user_id)
+    target = next((p for p in pairs if p.id == pair_id), None)
+    if target:
+        if target.is_active: await repost_service.deactivate_pair(user_id, pair_id)
+        else: await repost_service.activate_pair(user_id, pair_id)
+        await render_pairs_view(callback.message, user_id, is_remote=True)
+    await safe_callback_answer(callback)
+
+@router.callback_query(F.data.startswith("uloo_"))
+async def cb_remote_loop(callback: types.CallbackQuery):
+    if not await repost_service.is_admin(callback.from_user.id): return
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    await repost_service.toggle_pair_recycling(user_id, pair_id)
+    await render_pairs_view(callback.message, user_id, is_remote=True)
+    await safe_callback_answer(callback)
+
+@router.callback_query(F.data.startswith("udel_"))
+async def cb_remote_ask_delete(callback: types.CallbackQuery):
+    if not await repost_service.is_admin(callback.from_user.id): return
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    await callback.message.edit_text(
+        f"<b>⚠️ Remote Delete: Pair #{pair_id} (User {user_id})?</b>\n\nThis cannot be undone.",
+        reply_markup=delete_confirm_kb(pair_id, target_id=user_id),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("ucdel_"))
+async def cb_remote_execute_delete(callback: types.CallbackQuery):
+    if not await repost_service.is_admin(callback.from_user.id): return
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    await repost_service.delete_single_pair(user_id, pair_id)
+    await render_pairs_view(callback.message, user_id, is_remote=True)
+    await safe_callback_answer(callback, "🧨 Deleted remotely.")

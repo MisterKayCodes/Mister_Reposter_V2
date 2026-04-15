@@ -54,22 +54,32 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     return builder.as_markup()
 
 
-def pairs_kb(pairs):
+def pairs_kb(pairs, target_id: int = None):
     builder = InlineKeyboardBuilder()
     for idx, p in enumerate(pairs, 1):
         if getattr(p, "status", "") == "error":
             label = "🔄 Clear"
         else:
             label = "Pause" if p.is_active else "Play"
-        builder.button(text=f"{label} #{idx}", callback_data=f"tog_{p.id}")
+            
+        # If target_id is present, we are in Admin Remote mode
+        prefix = "u" if target_id else ""
+        ext = f"{target_id}_" if target_id else ""
+        
+        builder.button(text=f"{label} #{idx}", callback_data=f"{prefix}tog_{ext}{p.id}")
         
         loop_label = "♻️ Loop: ON" if getattr(p, "loop_history", False) else "♻️ Loop: OFF"
-        builder.button(text=loop_label, callback_data=f"loop_{p.id}")
+        builder.button(text=loop_label, callback_data=f"{prefix}loop_{ext}{p.id}")
         
-        builder.button(text=f"Delete #{idx}", callback_data=f"del_{p.id}")
+        builder.button(text=f"Delete #{idx}", callback_data=f"{prefix}del_{ext}{p.id}")
+        
     if len(pairs) < MAX_PAIRS:
-        builder.button(text="+ New Pair", callback_data="create")
-    builder.button(text="Back", callback_data="main")
+        # Remote create or local create
+        c_data = f"uaddpair_{target_id}" if target_id else "create"
+        builder.button(text="+ New Pair", callback_data=c_data)
+        
+    back_data = f"uview_{target_id}" if target_id else "main"
+    builder.button(text="Back", callback_data=back_data)
     builder.adjust(2)
     return builder.as_markup()
 
@@ -113,10 +123,15 @@ def schedule_kb():
     return builder.as_markup()
 
 
-def delete_confirm_kb(pair_id: int):
+def delete_confirm_kb(pair_id: int, target_id: int = None):
     builder = InlineKeyboardBuilder()
-    builder.button(text="Yes, Delete", callback_data=f"cdel_{pair_id}")
-    builder.button(text="Cancel", callback_data="pairs")
+    prefix = "u" if target_id else ""
+    ext = f"{target_id}_" if target_id else ""
+    
+    builder.button(text="Yes, Delete", callback_data=f"{prefix}cdel_{ext}{pair_id}")
+    
+    back_data = f"upairs_{target_id}" if target_id else "pairs"
+    builder.button(text="Cancel", callback_data=back_data)
     builder.adjust(2)
     return builder.as_markup()
 

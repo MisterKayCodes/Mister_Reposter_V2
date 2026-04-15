@@ -180,13 +180,17 @@ def format_time_left(minutes: int) -> str:
     if hours < 24: return f"{hours}h {minutes % 60}m"
     return f"{hours // 24}d {hours % 24}h"
 
-async def render_pairs_view(message: types.Message, user_id: int):
+async def render_pairs_view(message: types.Message, user_id: int, is_remote: bool = False):
     try:
         pairs = await repost_service.get_user_pairs(user_id)
         if not pairs:
-            return await message.edit_text("<b>No pairs yet.</b>", reply_markup=empty_pairs_kb(), parse_mode="HTML")
+            back_mark = f"uview_{user_id}" if is_remote else "main"
+            return await message.edit_text("<b>No pairs yet.</b>", reply_markup=InlineKeyboardBuilder().button(text="Back", callback_data=back_mark).as_markup(), parse_mode="HTML")
 
         lines = [f"<b>Your Repost Pairs ({len(pairs)}/{MAX_PAIRS})</b>\n"]
+        if is_remote:
+            lines[0] = f"<b>📋 Remote View: User {user_id} ({len(pairs)}/{MAX_PAIRS})</b>\n"
+
         for idx, p in enumerate(pairs, 1):
             status = "🟢 Active" if p.is_active else "🟡 Paused"
             if getattr(p, "status", "") == "error": status = "🔴 Error"
@@ -201,7 +205,7 @@ async def render_pairs_view(message: types.Message, user_id: int):
             lines.append(f"Filter: {FILTER_LABELS.get(p.filter_type)} | Sched: {SCHEDULE_LABELS.get(p.schedule_interval)}")
             lines.append(f"<i>Pointer: msg #{p.start_from_msg_id or 1} | ♻️ Loop: {loop}</i>\n")
 
-        await message.edit_text("\n".join(lines), reply_markup=pairs_kb(pairs), parse_mode="HTML")
+        await message.edit_text("\n".join(lines), reply_markup=pairs_kb(pairs, target_id=user_id if is_remote else None), parse_mode="HTML")
     except Exception as e:
         logger.error(f"Pairs view error: {e}")
 

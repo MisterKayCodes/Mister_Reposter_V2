@@ -106,7 +106,7 @@ async def cb_upairs(callback: types.CallbackQuery):
     if not await _check_admin(callback.from_user.id): return
     
     user_id = int(callback.data.split("_")[1])
-    await render_pairs_view(callback.message, user_id)
+    await render_pairs_view(callback.message, user_id, is_remote=True)
 
 @router.callback_query(F.data.startswith("ustat_"))
 async def cb_ustat(callback: types.CallbackQuery):
