@@ -27,7 +27,11 @@ class UserRepository(PairRepository):
                     await self.session.execute(text(f"SELECT {col} FROM users LIMIT 1"))
                 except Exception:
                     logger.warning(f"Healing Schema: Adding {col} to users table.")
-                    await self.session.execute(text(f"ALTER TABLE users ADD COLUMN {col} BOOLEAN DEFAULT 0"))
+                    col_type = "DATETIME" if col == "premium_until" else "BOOLEAN"
+                    await self.session.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
+            
+            # Data Migration: SQLite sets defaults to '0' if added as BOOLEAN. Clean it for DATETIME.
+            await self.session.execute(text("UPDATE users SET premium_until = NULL WHERE premium_until = '0' OR premium_until = 0"))
             await self.session.commit()
         except Exception as e:
             logger.error(f"Schema healing failed: {e}")
