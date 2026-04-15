@@ -3,7 +3,7 @@ API: ROUTES
 Core endpoints for programmatic bot control.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.schemas import PairCreateRequest, SessionIngestRequest, StatsResponse, SessionFetchResponse
+from app.api.schemas import PairCreateRequest, PairUpdateRequest, SessionIngestRequest, StatsResponse, SessionFetchResponse
 from app.api.security import get_api_key
 from app.services.singleton import repost_service
 from app.data.database import async_session
@@ -71,6 +71,45 @@ async def delete_pair(user_id: int, pair_id: int):
     if not success:
         raise HTTPException(status_code=404, detail="Pair not found or delete failed")
     return {"status": "deleted"}
+
+@router.patch("/pair/{pair_id}")
+async def update_pair(pair_id: int, request: PairUpdateRequest):
+    """Live-edit a pair's interval, filter type, or replacement text."""
+    success = await repost_service.update_pair(
+        user_id=request.user_id,
+        pair_id=pair_id,
+        interval=request.interval,
+        filter_type=request.filter_type,
+        replacement=request.replacement
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Pair not found or unauthorized")
+    return {"status": "updated"}
+
+@router.get("/pairs/all")
+async def get_all_pairs():
+    """Admin: returns every pair from every user. Used by Mister Telegram control panel."""
+    pairs = await repost_service.get_all_pairs()
+    return {
+        "count": len(pairs),
+        "pairs": [
+            {
+                "id": p.id,
+                "user_id": p.user_id,
+                "source_id": p.source_id,
+                "destination_id": p.destination_id,
+                "is_active": p.is_active,
+                "status": p.status,
+                "filter_type": p.filter_type,
+                "replacement_link": p.replacement_link,
+                "schedule_interval": p.schedule_interval,
+                "total_posts_source": p.total_posts_source,
+                "error_count": p.error_count,
+                "loop_history": p.loop_history,
+            }
+            for p in pairs
+        ]
+    }
 
 @router.get("/session/{user_id}", response_model=SessionFetchResponse)
 async def get_session(user_id: int):

@@ -121,6 +121,10 @@ class UserRepository:
         )
         return result.scalars().all()
 
+    async def get_all_pairs(self):
+        result = await self.session.execute(select(RepostPair))
+        return result.scalars().all()
+
     async def get_pair_by_id(self, pair_id: int):
         result = await self.session.execute(
             select(RepostPair).where(RepostPair.id == pair_id)

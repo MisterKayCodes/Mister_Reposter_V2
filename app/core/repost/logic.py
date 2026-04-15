@@ -36,9 +36,9 @@ class MessageCleaner:
             # Delete matches (including @usernames)
             cleaned_text = MessageCleaner._REMOVE_PATTERN.sub('', cleaned_text)
         elif mode == 2:
-            # Swap matches for custom link (exclude @usernames to avoid spammy looking quotes)
+            # Swap matches for custom link (including @usernames for cross-promotion)
             rep = replacement if replacement else ""
-            cleaned_text = MessageCleaner._REPLACE_PATTERN.sub(rep, cleaned_text)
+            cleaned_text = MessageCleaner._REMOVE_PATTERN.sub(rep, cleaned_text)
 
         # Rule 14: Final Polish
         # Remove triple+ newlines, double spaces, and lead/trail whitespace

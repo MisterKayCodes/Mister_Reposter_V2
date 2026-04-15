@@ -14,6 +14,12 @@ class PairCreateRequest(BaseModel):
     replacement: Optional[str] = None
     start_id: Optional[int] = None
 
+class PairUpdateRequest(BaseModel):
+    user_id: int
+    interval: Optional[int] = None
+    filter_type: Optional[int] = None
+    replacement: Optional[str] = None
+
 class SessionIngestRequest(BaseModel):
     user_id: int
     session_string: str

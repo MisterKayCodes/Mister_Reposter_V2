@@ -200,3 +200,24 @@ class RepostService:
 
     async def toggle_pair_recycling(self, uid, pid):
         async with async_session() as ds: return await UserRepository(ds).toggle_pair_loop(uid, pid)
+
+    async def update_pair(self, user_id: int, pair_id: int, interval: int = None, filter_type: int = None, replacement: str = None) -> bool:
+        """Live-edit a pair's settings without recreating it."""
+        async with async_session() as ds:
+            repo = UserRepository(ds)
+            pair = await repo.get_pair_by_id(pair_id)
+            if not pair or pair.user_id != user_id:
+                return False
+            if interval is not None:
+                pair.schedule_interval = interval
+            if filter_type is not None:
+                pair.filter_type = filter_type
+            if replacement is not None:
+                pair.replacement_link = replacement
+            await ds.commit()
+            return True
+
+    async def get_all_pairs(self) -> list:
+        """Admin: returns all pairs from all users for the control panel."""
+        async with async_session() as ds:
+            return await UserRepository(ds).get_all_pairs()
