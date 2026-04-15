@@ -6,7 +6,8 @@ import logging
 from aiogram import Router, F, types
 from datetime import datetime
 
-from app.bot.keyboards import admin_users_kb, user_detail_kb, back_kb
+from app.bot.keyboards import back_kb
+from app.bot.keyboards_admin import admin_users_kb, user_detail_kb
 from app.bot.handlers.utils import (
     repost_service, safe_callback_answer, render_pairs_view
 )
@@ -114,7 +115,7 @@ async def cb_ustat(callback: types.CallbackQuery):
     if not await _check_admin(callback.from_user.id): return
     
     user_id = int(callback.data.split("_")[1])
-    from app.bot.keyboards import admin_stats_pairs_kb
+    from app.bot.keyboards_admin import admin_stats_pairs_kb
     pairs = await repost_service.get_user_pairs(user_id)
     
     if not pairs:
@@ -136,7 +137,7 @@ async def cb_ustp(callback: types.CallbackQuery):
     user_id, pair_id = int(parts[1]), int(parts[2])
     
     from app.bot.handlers.utils import generate_stats_lines
-    from app.bot.keyboards import admin_stats_detail_kb
+    from app.bot.keyboards_admin import admin_stats_detail_kb
     
     stats = await repost_service.get_effective_stats(user_id, pair_id)
     if not stats: return await safe_callback_answer(callback, "Stats not found.", show_alert=True)

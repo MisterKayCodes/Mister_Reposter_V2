@@ -6,7 +6,8 @@ import logging
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 
-from app.bot.keyboards import bot_settings_kb, back_kb
+from app.bot.keyboards import back_kb
+from app.bot.keyboards_admin import bot_settings_kb
 from app.bot.states import BotSettings
 from app.bot.handlers.utils import repost_service, safe_callback_answer
 from app.data.database import async_session

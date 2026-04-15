@@ -185,7 +185,7 @@ async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
         )
         
         if target_id != admin_id:
-            from app.bot.keyboards import user_detail_kb
+            from app.bot.keyboards_admin import user_detail_kb
             from app.data.database import async_session as ds_gen
             from app.data.repository import UserRepository
             
