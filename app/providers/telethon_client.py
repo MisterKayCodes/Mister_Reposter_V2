@@ -177,6 +177,13 @@ class TelethonProvider:
         client = self.active_clients.get(user_id)
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
+            
+            # Rule 11: Pre-emptive Entity Warm-up
+            try:
+                target = await client.get_entity(target)
+            except Exception:
+                pass
+
             # We ask for a specific ID. If it's gone, Telegram returns None.
             return await client.get_messages(target, ids=msg_id)
         except Exception as e:
@@ -189,8 +196,14 @@ class TelethonProvider:
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
             
+            # Rule 11: Pre-emptive Entity Warm-up
+            # We fetch the entity first to avoid "Could not find input entity" errors
+            try:
+                target = await client.get_entity(target)
+            except Exception as ent_err:
+                logger.debug(f"Entity warm-up failed for {source_id}: {ent_err}")
+
             # Senior Move: Use the low-level GetHistoryRequest for 100% accurate count
-            # This bypasses any local caching issues in the client.
             result = await client(GetHistoryRequest(
                 peer=target,
                 offset_id=0,
