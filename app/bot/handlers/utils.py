@@ -77,6 +77,28 @@ async def render_stats_menu(message: types.Message, user_id: int):
     except Exception as e:
         logger.error(f"Error rendering stats menu: {e}")
 
+def generate_stats_lines(stats, local_idx):
+    """Rule 20: Unified stats formatting for user and admin views."""
+    label = SCHEDULE_LABELS.get(stats["schedule"], "Instant")
+    now = datetime.now().strftime("%H:%M:%S")
+    lines = [f"<b>📊 Stats for Pair #{local_idx}</b>", f"<i>(Updated: {now})</i>\n"]
+    
+    if stats.get("last_error"):
+        lines.append(f"⚠️ <b>PAUSED:</b> {translate_error(stats['last_error'])}\n")
+        
+    lines.extend([
+        f"📫 <b>Source:</b> <code>{stats['source']}</code>",
+        f"📬 <b>Destination:</b> <code>{stats['destination']}</code>",
+        f"🕒 <b>Schedule:</b> {label}", "──────────────────"
+    ])
+
+    if stats["schedule"] and stats["schedule"] > 0:
+        _add_backfill_stats(lines, stats)
+    else:
+        lines.append("ℹ️ <i>Stats for scheduled pairs only.</i>")
+    
+    return lines
+
 async def render_pair_stats(message: types.Message, user_id: int, pair_id: int):
     try:
         stats = await repost_service.get_effective_stats(user_id, pair_id)
@@ -90,24 +112,7 @@ async def render_pair_stats(message: types.Message, user_id: int, pair_id: int):
                 local_idx = i
                 break
 
-        label = SCHEDULE_LABELS.get(stats["schedule"], "Instant")
-        now = datetime.now().strftime("%H:%M:%S")
-        lines = [f"<b>📊 Stats for Pair #{local_idx}</b>", f"<i>(Updated: {now})</i>\n"]
-        
-        if stats.get("last_error"):
-            lines.append(f"⚠️ <b>PAUSED:</b> {translate_error(stats['last_error'])}\n")
-            
-        lines.extend([
-            f"📫 <b>Source:</b> <code>{stats['source']}</code>",
-            f"📬 <b>Destination:</b> <code>{stats['destination']}</code>",
-            f"🕒 <b>Schedule:</b> {label}", "──────────────────"
-        ])
-
-        if stats["schedule"] and stats["schedule"] > 0:
-            _add_backfill_stats(lines, stats)
-        else:
-            lines.append("ℹ️ <i>Stats for scheduled pairs only.</i>")
-
+        lines = generate_stats_lines(stats, local_idx)
         await message.edit_text("\n".join(lines), reply_markup=stats_detail_kb(stats['id']), parse_mode="HTML")
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):

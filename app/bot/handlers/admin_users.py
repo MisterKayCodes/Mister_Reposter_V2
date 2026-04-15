@@ -135,29 +135,24 @@ async def cb_ustp(callback: types.CallbackQuery):
     parts = callback.data.split("_")
     user_id, pair_id = int(parts[1]), int(parts[2])
     
-    from app.bot.handlers.utils import render_pair_stats
+    from app.bot.handlers.utils import generate_stats_lines
     from app.bot.keyboards import admin_stats_detail_kb
     
-    # We'll use a trick here: Temporarily replace the keyboard of the utility
-    # Or just write a quick one here. Writing here is safer.
     stats = await repost_service.get_effective_stats(user_id, pair_id)
     if not stats: return await safe_callback_answer(callback, "Stats not found.", show_alert=True)
     
-    # Re-use lines logic from render_pair_stats if possible, but keep it simple here
-    from app.bot.handlers.utils import translate_error, SCHEDULE_LABELS
-    lines = [f"<b>📊 Remote Stats: User {user_id}</b>", f"<i>Pair #{pair_id}</i>\n"]
-    lines.extend([
-        f"📫 <b>Source:</b> <code>{stats['source']}</code>",
-        f"📬 <b>Destination:</b> <code>{stats['destination']}</code>",
-        f"🕒 <b>Mode:</b> {SCHEDULE_LABELS.get(stats['schedule'], 'Instant')}",
-        "──────────────────"
-    ])
-    if stats.get("total", 0) > 0:
-        lines.append(f"📦 <b>Progress:</b> {stats['current']} / {stats['total']}")
-        lines.append(f"📥 <b>Remaining:</b> {stats['remaining']} posts")
-    else:
-        lines.append("<i>Stats loading or real-time only.</i>")
-        
+    # Calculate local index for display
+    pairs = await repost_service.get_user_pairs(user_id)
+    local_idx = 1
+    for i, p in enumerate(pairs, 1):
+        if p.id == pair_id:
+            local_idx = i
+            break
+
+    lines = generate_stats_lines(stats, local_idx)
+    # Customize the header to remind them they are viewing REMOTE stats
+    lines[0] = f"<b>📊 Remote Stats: User {user_id} (Pair #{local_idx})</b>"
+    
     await callback.message.edit_text(
         "\n".join(lines),
         reply_markup=admin_stats_detail_kb(user_id, pair_id),
