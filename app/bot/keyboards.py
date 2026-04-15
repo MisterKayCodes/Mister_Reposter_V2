@@ -160,12 +160,6 @@ def limit_reached_kb():
     return builder.as_markup()
 
 
-def empty_pairs_kb():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="Create Pair", callback_data="create")
-    builder.button(text="Back", callback_data="main")
-    builder.adjust(1)
-    return builder.as_markup()
 
 
 def start_msg_kb():

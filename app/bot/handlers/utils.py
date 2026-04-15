@@ -5,13 +5,14 @@ Shared render helpers used across handler modules.
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from datetime import datetime
 import time
 import logging
 from app.services.singleton import repost_service
 from app.bot.keyboards import (
     MAX_PAIRS, SCHEDULE_LABELS, FILTER_LABELS,
-    main_menu_kb, pairs_kb, empty_pairs_kb,
+    main_menu_kb, pairs_kb,
     stats_pairs_kb, stats_detail_kb, back_kb,
     client_main_menu_kb, client_channels_kb, client_stats_kb
 )
