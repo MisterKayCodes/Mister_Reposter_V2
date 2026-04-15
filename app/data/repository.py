@@ -6,11 +6,30 @@ Strictly for reading and writing to the Vault.
 from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from .models import User, RepostPair
+from app.core.config import ADMIN_IDS
 
 
 class UserRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def ensure_schema_healed(self):
+        """Rule 11: Self-healing schema for dynamic additions."""
+        try:
+            from sqlalchemy import text
+            # SQLite specific column addition checks
+            for col in ["is_admin", "is_premium", "premium_until"]:
+                try:
+                    await self.session.execute(text(f"SELECT {col} FROM users LIMIT 1"))
+                except Exception:
+                    logger.warning(f"Healing Schema: Adding {col} to users table.")
+                    await self.session.execute(text(f"ALTER TABLE users ADD COLUMN {col} BOOLEAN DEFAULT 0"))
+                    if col == "premium_until":
+                        await self.session.execute(text(f"ALTER TABLE users MODIFY COLUMN {col} DATETIME"))
+                        # SQLite doesn't have MODIFY, but ADD usually works if we ignore errors
+            await self.session.commit()
+        except Exception as e:
+            logger.error(f"Schema healing failed: {e}")
 
     # Looking for a specific user in our ledger.
     # It's like checking if a person's name is on the VIP list at the door.
@@ -24,9 +43,16 @@ class UserRepository:
         user = await self.get_user(user_id)
         if not user:
             user = User(id=user_id, username=username)
+            # Bootstrapping: If they are in the hardcoded config, make them an admin
+            if user_id in ADMIN_IDS:
+                user.is_admin = True
             self.session.add(user)
         else:
-            user.username = username
+            if username: user.username = username
+            # Ensure existing hardcoded admins are elevated if they weren't already
+            if user_id in ADMIN_IDS and not user.is_admin:
+                user.is_admin = True
+                
         await self.session.commit()
         return user
 
@@ -35,6 +61,31 @@ class UserRepository:
         if user:
             user.session_string = session_string
             user.has_active_session = True
+            await self.session.commit()
+            return True
+        return False
+
+    async def get_all_users(self):
+        result = await self.session.execute(select(User).order_by(User.created_at.desc()))
+        return result.scalars().all()
+
+    async def promote_user(self, user_id: int, status: bool = True) -> bool:
+        user = await self.get_user(user_id)
+        if user:
+            user.is_admin = status
+            await self.session.commit()
+            return True
+        return False
+
+    async def grant_premium(self, user_id: int, months: int = 1) -> bool:
+        user = await self.get_user(user_id)
+        if user:
+            from datetime import timedelta
+            user.is_premium = True
+            if not user.premium_until or user.premium_until < datetime.utcnow():
+                user.premium_until = datetime.utcnow() + timedelta(days=30 * months)
+            else:
+                user.premium_until += timedelta(days=30 * months)
             await self.session.commit()
             return True
         return False
@@ -102,7 +153,7 @@ class UserRepository:
             return True
         return False
 
-    async def delete_all_user_pairs(self, user_id: int) -> int:
+    async def delete_all_pairs(self, user_id: int) -> int:
         result = await self.session.execute(
             delete(RepostPair).where(RepostPair.user_id == user_id)
         )

@@ -14,7 +14,8 @@ router = Router()
 
 @router.callback_query(F.data == "logs")
 async def cb_view_logs(callback: types.CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
+    from app.services.singleton import repost_service
+    if not await repost_service.is_admin(callback.from_user.id):
         await callback.answer("Access denied.", show_alert=True)
         return
 

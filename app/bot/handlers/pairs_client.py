@@ -55,7 +55,7 @@ async def cb_client_pause_all(callback: types.CallbackQuery):
     """Pause everything for the client."""
     user_id = callback.from_user.id
     try:
-        await repost_service.deactivate_all_user_pairs(user_id)
+        await repost_service.deactivate_all_pairs(user_id)
         await callback.answer("🛑 All channels paused.")
         await render_client_dashboard(callback.message, user_id)
     except Exception as e:

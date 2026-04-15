@@ -144,7 +144,9 @@ async def render_main_menu(target: types.Message, user_id: int = None, edit: boo
     pair_count = 0
     active_count = 0
     error_count = 0
-    is_admin = user_id in ADMIN_IDS if user_id else False
+    is_admin = False
+    if user_id:
+        is_admin = await repost_service.is_admin(user_id)
 
     if user_id:
         has_session = await repost_service.user_has_session(user_id)

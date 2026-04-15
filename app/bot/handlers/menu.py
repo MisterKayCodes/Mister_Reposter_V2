@@ -20,7 +20,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     await repost_service.register_user(user_id, message.from_user.username)
     
-    if user_id in ADMIN_IDS:
+    if await repost_service.is_admin(user_id):
         await render_main_menu(message, user_id=user_id, edit=False)
     else:
         await render_client_dashboard(message, user_id=user_id, edit=False)
@@ -30,7 +30,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def cb_main_menu(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     user_id = callback.from_user.id
-    if user_id in ADMIN_IDS:
+    if await repost_service.is_admin(user_id):
         await render_main_menu(callback.message, user_id=user_id)
     else:
         await render_client_dashboard(callback.message, user_id=user_id)
@@ -56,6 +56,6 @@ async def cb_delete_all(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "delall_yes")
 async def cb_confirm_delete_all(callback: types.CallbackQuery):
-    count = await repost_service.delete_all_user_pairs(callback.from_user.id)
+    count = await repost_service.delete_all_pairs(callback.from_user.id)
     await callback.answer(f"Removed {count} pairs.")
     await render_main_menu(callback.message, user_id=callback.from_user.id)

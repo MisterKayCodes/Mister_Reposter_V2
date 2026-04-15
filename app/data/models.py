@@ -21,6 +21,11 @@ class User(Base):
     has_active_session: Mapped[bool] = mapped_column(Boolean, default=False)
     session_string: Mapped[str | None] = mapped_column(String)
 
+    # Permissions & Subscriptions
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
+    premium_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
 
 class RepostPair(Base):
     __tablename__ = "repost_pairs"

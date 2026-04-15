@@ -20,7 +20,7 @@ session_service = SessionService()
 @router.callback_query(F.data == "upload")
 async def cb_upload_session(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
-    if user_id not in ADMIN_IDS:
+    if not await repost_service.is_admin(user_id):
         await callback.answer("Admin only feature.", show_alert=True)
         return
 
@@ -50,7 +50,7 @@ async def cb_upload_session(callback: types.CallbackQuery, state: FSMContext):
 @router.message(SessionUpload.waiting_for_input)
 async def process_session_input(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    is_admin = user_id in ADMIN_IDS
+    is_admin = await repost_service.is_admin(user_id)
     success = False
 
     if message.document:
@@ -92,7 +92,7 @@ async def cb_get_session(callback: types.CallbackQuery):
     from app.data.repository import UserRepository
 
     user_id = callback.from_user.id
-    if user_id not in ADMIN_IDS:
+    if not await repost_service.is_admin(user_id):
         await callback.answer("Admin only feature.", show_alert=True)
         return
 

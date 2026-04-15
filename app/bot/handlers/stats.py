@@ -18,7 +18,7 @@ async def handle_stats_menu(callback: types.CallbackQuery):
     """Shows the list of pairs for stats selection."""
     try:
         user_id = callback.from_user.id
-        if user_id in ADMIN_IDS:
+        if await repost_service.is_admin(user_id):
             await render_stats_menu(callback.message, user_id)
         else:
             await render_client_stats_menu(callback.message, user_id)
@@ -34,7 +34,7 @@ async def handle_pair_detail_stats(callback: types.CallbackQuery):
         pair_id = int(callback.data.split("_")[1])
         user_id = callback.from_user.id
         
-        if user_id in ADMIN_IDS:
+        if await repost_service.is_admin(user_id):
             await render_pair_stats(callback.message, user_id, pair_id)
         else:
             await render_client_pair_stats(callback.message, user_id, pair_id)

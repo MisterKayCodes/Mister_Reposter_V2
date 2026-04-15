@@ -38,7 +38,15 @@ async def main():
 
     # 2. INITIALIZATION
     await init_db()
-    logger.info("Database initialized.")
+    
+    # Rule 11: Schema Migration (Self-Healing)
+    from app.data.repository import UserRepository
+    from app.data.database import async_session
+    async with async_session() as ds:
+        repo = UserRepository(ds)
+        await repo.ensure_schema_healed()
+        
+    logger.info("Database initialized and healed.")
 
     session = AiohttpSession(timeout=60)
     bot = Bot(token=config.BOT_TOKEN.get_secret_value(), session=session)

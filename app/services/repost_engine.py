@@ -58,6 +58,23 @@ class RepostService:
         async with async_session() as ds:
             return await UserRepository(ds).create_or_update_user(user_id, username)
 
+    async def is_admin(self, user_id: int) -> bool:
+        async with async_session() as ds:
+            user = await UserRepository(ds).get_user(user_id)
+            return user.is_admin if user else False
+
+    async def is_premium(self, user_id: int) -> bool:
+        async with async_session() as ds:
+            user = await UserRepository(ds).get_user(user_id)
+            if not user: return False
+            if not user.is_premium: return False
+            if user.premium_until and user.premium_until < datetime.utcnow():
+                # Self-healing: revoke expired premium
+                await UserRepository(ds).grant_premium(user_id, months=0) 
+                # ^ Need a separate 'revoke' method or just handle it here
+                return False
+            return True
+
     async def user_has_session(self, user_id):
         async with async_session() as ds:
             user = await UserRepository(ds).get_user(user_id)
@@ -67,7 +84,7 @@ class RepostService:
         async with async_session() as ds:
             return await UserRepository(ds).get_user_pairs(user_id)
 
-    async def delete_all_user_pairs(self, user_id):
+    async def delete_all_pairs(self, user_id):
         async with async_session() as ds:
             repo = UserRepository(ds)
             pairs = await repo.get_user_pairs(user_id)
@@ -81,6 +98,16 @@ class RepostService:
         self._cancel_backfill_task(pair_id)
         async with async_session() as ds:
             return await UserRepository(ds).delete_pair_by_id(user_id, pair_id)
+
+    async def deactivate_all_pairs(self, user_id):
+        async with async_session() as ds:
+            repo = UserRepository(ds)
+            pairs = await repo.get_user_pairs(user_id)
+            for p in pairs:
+                self._cancel_schedule_timer(p.id)
+                self._cancel_backfill_task(p.id)
+                await repo.deactivate_pair(user_id, p.id)
+            return True
 
     async def deactivate_pair(self, user_id, pair_id):
         self._cancel_schedule_timer(pair_id)

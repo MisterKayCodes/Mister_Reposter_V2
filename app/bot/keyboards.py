@@ -38,6 +38,7 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
         builder.button(text="🔑 Get Session", callback_data="get_session")
     if is_admin:
         builder.button(text="📜 Logs", callback_data="logs")
+        builder.button(text="👤 Manage Users", callback_data="admin_users")
     builder.button(text="🗑️ Delete All", callback_data="delall")
     
     # Adjust layout based on role and session
@@ -46,7 +47,7 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     elif not has_session:
         builder.adjust(1, 2, 1)
     elif is_admin:
-        builder.adjust(2, 2, 1, 1)
+        builder.adjust(2, 2, 2, 1)
     else:
         builder.adjust(2, 2, 1)
     return builder.as_markup()
@@ -237,5 +238,32 @@ def client_support_kb():
     # Replace with your actual username in production or make dynamic
     builder.button(text="💬 Message Owner", url="https://t.me/MisterKayCodes") 
     builder.button(text="🔙 Back", callback_data="main")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def admin_users_kb(users):
+    """List of all registered users."""
+    builder = InlineKeyboardBuilder()
+    for u in users:
+        label = f"{u.id}"
+        if u.username: label += f" (@{u.username})"
+        builder.button(text=label, callback_data=f"uview_{u.id}")
+    builder.button(text="🔙 Back", callback_data="main")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def user_detail_kb(user_id: int, target_is_admin: bool, target_is_premium: bool):
+    """Detailed management for a specific user."""
+    builder = InlineKeyboardBuilder()
+    
+    admin_label = "❌ Revoke Admin" if target_is_admin else "👑 Promote to Admin"
+    builder.button(text=admin_label, callback_data=f"uprom_{user_id}")
+    
+    prem_label = "💎 Extend Premium" if target_is_premium else "💎 Grant Premium (1mo)"
+    builder.button(text=prem_label, callback_data=f"uprem_{user_id}")
+    
+    builder.button(text="📋 View Pairs", callback_data=f"upairs_{user_id}")
+    builder.button(text="🔙 Back to Users", callback_data="admin_users")
     builder.adjust(1)
     return builder.as_markup()

@@ -27,7 +27,7 @@ router = Router()
 async def cb_create_pair(callback: types.CallbackQuery, state: FSMContext):
     await safe_callback_answer(callback, "🔨 Starting setup...")
     user_id = callback.from_user.id
-    is_admin = user_id in ADMIN_IDS
+    is_admin = await repost_service.is_admin(user_id)
 
     if not is_admin:
         await callback.answer("Please contact support to add new channels.", show_alert=True)
@@ -154,7 +154,8 @@ async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
             schedule_interval=data["schedule_interval"] or None,
             start_from_msg_id=data.get("start_from_msg_id"),
         )
-        await callback.message.edit_text("<b>✅ Pair Created!</b>", reply_markup=main_menu_kb(True, user_id in ADMIN_IDS), parse_mode="HTML")
+        is_adm = await repost_service.is_admin(user_id)
+        await callback.message.edit_text("<b>✅ Pair Created!</b>", reply_markup=main_menu_kb(True, is_adm), parse_mode="HTML")
         await state.clear()
     except Exception as e:
         logger.error(f"Create failed: {e}")
