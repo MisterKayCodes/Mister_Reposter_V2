@@ -248,3 +248,11 @@ class RepostService:
         """Admin: returns all pairs from all users for the control panel."""
         async with async_session() as ds:
             return await UserRepository(ds).get_all_pairs()
+
+    async def get_system_setting(self, key: str, default: str = None) -> str:
+        async with async_session() as ds:
+            return await UserRepository(ds).get_setting(key, default)
+
+    async def set_system_setting(self, key: str, value: str):
+        async with async_session() as ds:
+            return await UserRepository(ds).set_setting(key, value)

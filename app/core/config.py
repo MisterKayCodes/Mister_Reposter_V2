@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     API_HASH: str
     API_KEY: SecretStr = SecretStr("mister_default_key")
 
+    # Support
+    OWNER_USERNAME: str = "MisterKayCodes"
+
     # Database Configuration
     DATABASE_URL: str = "sqlite+aiosqlite:///data/reposter.db"
 

@@ -7,9 +7,9 @@ import logging
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from .models import User
+from .models import User, SystemSetting
 from .repo_pairs import PairRepository
-from app.core.config import ADMIN_IDS
+from app.core.config import ADMIN_IDS, config
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,11 @@ class UserRepository(PairRepository):
                     col_type = "DATETIME" if col == "premium_until" else "BOOLEAN"
                     await self.session.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
             
+            # Seed default settings
+            owner = await self.get_setting("owner_username")
+            if not owner:
+                await self.set_setting("owner_username", config.OWNER_USERNAME)
+
             # Data Migration: SQLite sets defaults to '0' if added as BOOLEAN. Clean it for DATETIME.
             await self.session.execute(text("UPDATE users SET premium_until = NULL WHERE premium_until = '0' OR premium_until = 0"))
             await self.session.commit()
@@ -87,3 +92,19 @@ class UserRepository(PairRepository):
             await self.session.commit()
             return True
         return False
+
+    async def get_setting(self, key: str, default: str = None) -> str | None:
+        result = await self.session.execute(select(SystemSetting).where(SystemSetting.key == key))
+        setting = result.scalar_one_or_none()
+        return setting.value if setting else default
+
+    async def set_setting(self, key: str, value: str):
+        result = await self.session.execute(select(SystemSetting).where(SystemSetting.key == key))
+        setting = result.scalar_one_or_none()
+        if not setting:
+            setting = SystemSetting(key=key, value=value)
+            self.session.add(setting)
+        else:
+            setting.value = value
+        await self.session.commit()
+        return setting

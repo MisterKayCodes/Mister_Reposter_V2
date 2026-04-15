@@ -16,3 +16,6 @@ class CreatePair(StatesGroup):
     waiting_for_schedule = State()
     waiting_for_start_message = State()
     waiting_for_confirmation = State()
+
+class BotSettings(StatesGroup):
+    waiting_for_owner_username = State()

@@ -39,6 +39,7 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     if is_admin:
         builder.button(text="📜 Logs", callback_data="logs")
         builder.button(text="👤 Manage Users", callback_data="admin_users")
+        builder.button(text="⚙️ Bot Settings", callback_data="admin_settings")
     builder.button(text="🗑️ Delete All", callback_data="delall")
     
     # Adjust layout based on role and session
@@ -47,7 +48,7 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     elif not has_session:
         builder.adjust(1, 2, 1)
     elif is_admin:
-        builder.adjust(2, 2, 2, 1)
+        builder.adjust(2, 2, 2, 2, 1)
     else:
         builder.adjust(2, 2, 1)
     return builder.as_markup()
@@ -232,11 +233,19 @@ def client_stats_kb(pair_id: int):
     return builder.as_markup()
 
 
-def client_support_kb():
+def client_support_kb(owner_username: str):
     """Link to admin for help."""
     builder = InlineKeyboardBuilder()
-    # Replace with your actual username in production or make dynamic
-    builder.button(text="💬 Message Owner", url="https://t.me/MisterKayCodes") 
+    username = owner_username.lstrip("@")
+    builder.button(text="💬 Message Owner", url=f"https://t.me/{username}") 
+    builder.button(text="🔙 Back", callback_data="main")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def bot_settings_kb():
+    """Menu to manage system variables."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💬 Edit Support Username", callback_data="edit_owner_user")
     builder.button(text="🔙 Back", callback_data="main")
     builder.adjust(1)
     return builder.as_markup()

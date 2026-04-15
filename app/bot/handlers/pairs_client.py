@@ -17,10 +17,13 @@ router = Router()
 async def cb_client_support(callback: types.CallbackQuery):
     """Shows support options for clients."""
     from app.bot.keyboards import client_support_kb
+    
+    owner = await repost_service.get_system_setting("owner_username", "MisterKayCodes")
+    
     await callback.message.edit_text(
         "<b>💬 Customer Support</b>\n\n"
         "Need to add a source? Found a bug? Just message me directly.",
-        reply_markup=client_support_kb(),
+        reply_markup=client_support_kb(owner),
         parse_mode="HTML"
     )
     await callback.answer()

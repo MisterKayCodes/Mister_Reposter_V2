@@ -55,3 +55,8 @@ class RepostPair(Base):
 
     # Stats tracking
     total_posts_source: Mapped[int | None] = mapped_column(Integer, nullable=True)
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String)
