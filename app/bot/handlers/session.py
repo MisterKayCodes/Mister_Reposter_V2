@@ -20,6 +20,10 @@ session_service = SessionService()
 @router.callback_query(F.data == "upload")
 async def cb_upload_session(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
+    if user_id not in ADMIN_IDS:
+        await callback.answer("Admin only feature.", show_alert=True)
+        return
+
     session_file = os.path.join("data", "sessions", f"{user_id}.session")
 
     if os.path.exists(session_file):
@@ -88,6 +92,10 @@ async def cb_get_session(callback: types.CallbackQuery):
     from app.data.repository import UserRepository
 
     user_id = callback.from_user.id
+    if user_id not in ADMIN_IDS:
+        await callback.answer("Admin only feature.", show_alert=True)
+        return
+
     await callback.answer()
 
     async with db_session() as ds:

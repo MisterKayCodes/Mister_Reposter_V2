@@ -11,7 +11,8 @@ from app.services.singleton import repost_service
 from app.bot.keyboards import (
     MAX_PAIRS, SCHEDULE_LABELS, FILTER_LABELS,
     main_menu_kb, pairs_kb, empty_pairs_kb,
-    stats_pairs_kb, stats_detail_kb, back_kb
+    stats_pairs_kb, stats_detail_kb, back_kb,
+    client_main_menu_kb, client_channels_kb, client_stats_kb
 )
 from app.core.config import ADMIN_IDS
 
@@ -160,3 +161,82 @@ async def render_pairs_view(message: types.Message, user_id: int):
         await message.edit_text("\n".join(lines), reply_markup=pairs_kb(pairs), parse_mode="HTML")
     except Exception as e:
         logger.error(f"Pairs view error: {e}")
+
+
+# --- CLIENT-FACING RENDERERS (SIMPLE UI) ---
+
+async def render_client_dashboard(target: types.Message, user_id: int, edit: bool = True):
+    """
+    The 'Mister Reposter' simple dashboard for clients.
+    Shows channel status and stats at a glance.
+    """
+    try:
+        pairs = await repost_service.get_user_pairs(user_id)
+        if not pairs:
+            text = "<b>🔄 Mister Reposter</b>\n\nWelcome! No channels connected yet. Contact support to get started."
+            kb = client_main_menu_kb() # Or a support-focused KB
+        else:
+            active_count = sum(1 for p in pairs if p.is_active)
+            error_count = sum(1 for p in pairs if getattr(p, "status", "") == "error")
+            
+            lines = ["<b>🔄 Mister Reposter</b>\n", "Welcome back! Here's your channel status:\n"]
+            
+            for p in pairs:
+                status_icon = "✅" if p.is_active else "⏸"
+                if getattr(p, "status", "") == "error": status_icon = "⚠️"
+                
+                # Use destination_id as the channel identifier for the client
+                lines.append(f"{status_icon} <b>{p.destination_id}</b>")
+                
+            text = "\n".join(lines)
+            kb = client_main_menu_kb()
+
+        if edit: await target.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        else: await target.answer(text, reply_markup=kb, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Client dashboard error: {e}")
+
+
+async def render_client_stats_menu(message: types.Message, user_id: int):
+    """Lists client's channels for stats selection."""
+    try:
+        pairs = await repost_service.get_user_pairs(user_id)
+        if not pairs:
+            return await message.edit_text("<b>No channels connected.</b>", reply_markup=back_kb(), parse_mode="HTML")
+        
+        await message.edit_text(
+            "<b>📊 Your Channels</b>\n\nSelect a channel to view detailed progress:",
+            reply_markup=client_channels_kb(pairs),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Client stats menu error: {e}")
+
+
+async def render_client_pair_stats(message: types.Message, user_id: int, pair_id: int):
+    """Simplified statistics view for clients."""
+    try:
+        stats = await repost_service.get_effective_stats(user_id, pair_id)
+        if not stats:
+            return await message.edit_text("❌ Channel not found.", reply_markup=back_kb())
+
+        status = "Active ✅" if stats.get("is_active") else "Paused ⏸"
+        if stats.get("last_error"): 
+            status = "⚠️ Issue detected (In progress)"
+
+        lines = [
+            f"<b>📊 Progress: {stats['destination']}</b>\n",
+            f"✅ <b>Status:</b> {status}",
+            f"📬 <b>Total Delivered:</b> {stats['total'] if stats['total'] > 0 else 'Calculating...'}",
+            "──────────────────",
+            f"🕒 <b>Mode:</b> {'Real-time' if not stats['schedule'] else f'Digest every {stats['schedule']}m'}",
+            f"📡 <b>Sources Connected:</b> 1" # Simplification
+        ]
+
+        if stats.get("last_reposted_at"):
+            # Mocking last post time for UX feel
+            lines.append(f"\n<i>Last post delivered recently.</i>")
+
+        await message.edit_text("\n".join(lines), reply_markup=client_stats_kb(pair_id), parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Client pair stats error: {e}")

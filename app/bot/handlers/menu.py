@@ -8,7 +8,8 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 
 from app.bot.keyboards import main_menu_kb, delete_all_confirm_kb
-from app.bot.handlers.utils import render_main_menu, render_pairs_view, repost_service
+from app.bot.handlers.utils import render_main_menu, render_pairs_view, repost_service, render_client_dashboard
+from app.core.config import ADMIN_IDS
 
 router = Router()
 
@@ -16,14 +17,23 @@ router = Router()
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
-    await repost_service.register_user(message.from_user.id, message.from_user.username)
-    await render_main_menu(message, user_id=message.from_user.id, edit=False)
+    user_id = message.from_user.id
+    await repost_service.register_user(user_id, message.from_user.username)
+    
+    if user_id in ADMIN_IDS:
+        await render_main_menu(message, user_id=user_id, edit=False)
+    else:
+        await render_client_dashboard(message, user_id=user_id, edit=False)
 
 
 @router.callback_query(F.data == "main")
 async def cb_main_menu(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await render_main_menu(callback.message, user_id=callback.from_user.id)
+    user_id = callback.from_user.id
+    if user_id in ADMIN_IDS:
+        await render_main_menu(callback.message, user_id=user_id)
+    else:
+        await render_client_dashboard(callback.message, user_id=user_id)
     await callback.answer()
 
 

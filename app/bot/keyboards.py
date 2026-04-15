@@ -190,3 +190,52 @@ def stats_detail_kb(pair_id: int):
     builder.button(text="🔙 Back to Stats", callback_data="stats")
     builder.adjust(1)
     return builder.as_markup()
+
+
+# --- CLIENT-FACING KEYBOARDS (SIMPLE UI) ---
+
+def client_main_menu_kb():
+    """Simple menu for paying clients."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⏸ Pause All", callback_data="c_pauseall")
+    builder.button(text="📊 My Stats", callback_data="c_stats")
+    builder.button(text="💬 Contact Support", callback_data="c_support")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def client_channels_kb(pairs):
+    """Lists client channels with simple options."""
+    builder = InlineKeyboardBuilder()
+    for p in pairs:
+        # Use destination_id since that's their channel
+        name = p.destination_id
+        if len(name) > 20: 
+            name = name[:17] + "..."
+        
+        status_label = "⏸ Pause" if p.is_active else "▶️ Resume"
+        builder.button(text=f"{status_label} {name}", callback_data=f"c_tog_{p.id}")
+        builder.button(text=f"📊 Stats {name}", callback_data=f"c_statp_{p.id}")
+        
+    builder.button(text="🔙 Back", callback_data="main")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def client_stats_kb(pair_id: int):
+    """Simple back button for stats."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔄 Refresh", callback_data=f"c_refr_{pair_id}")
+    builder.button(text="🔙 Back", callback_data="c_stats")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def client_support_kb():
+    """Link to admin for help."""
+    builder = InlineKeyboardBuilder()
+    # Replace with your actual username in production or make dynamic
+    builder.button(text="💬 Message Owner", url="https://t.me/MisterKayCodes") 
+    builder.button(text="🔙 Back", callback_data="main")
+    builder.adjust(1)
+    return builder.as_markup()
