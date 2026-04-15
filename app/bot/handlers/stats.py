@@ -55,6 +55,8 @@ async def handle_refresh_stats(callback: types.CallbackQuery):
         
         # Re-render
         await render_pair_stats(callback.message, callback.from_user.id, pair_id)
+    except Exception as e:
+        logger.error(f"Error in handle_refresh_stats: {e}")
         await callback.answer("⚠️ Failed to refresh stats.", show_alert=True)
 
 
