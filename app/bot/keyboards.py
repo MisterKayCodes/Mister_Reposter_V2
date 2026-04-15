@@ -273,6 +273,25 @@ def user_detail_kb(user_id: int, target_is_admin: bool, target_is_premium: bool)
     builder.button(text=prem_label, callback_data=f"uprem_{user_id}")
     
     builder.button(text="📋 View Pairs", callback_data=f"upairs_{user_id}")
+    builder.button(text="📊 View Stats", callback_data=f"ustat_{user_id}")
     builder.button(text="🔙 Back to Users", callback_data="admin_users")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def admin_stats_pairs_kb(user_id: int, pairs):
+    """Admin view of user's stats list."""
+    builder = InlineKeyboardBuilder()
+    for idx, p in enumerate(pairs, 1):
+        builder.button(text=f"📊 Pair #{idx}", callback_data=f"ustp_{user_id}_{p.id}")
+    builder.button(text="🔙 Back to User", callback_data=f"uview_{user_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def admin_stats_detail_kb(user_id: int, pair_id: int):
+    """Admin view of specific pair stats."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔄 Refresh", callback_data=f"uref_{user_id}_{pair_id}")
+    builder.button(text="🔙 Back to List", callback_data=f"ustat_{user_id}")
     builder.adjust(1)
     return builder.as_markup()

@@ -107,3 +107,72 @@ async def cb_upairs(callback: types.CallbackQuery):
     
     user_id = int(callback.data.split("_")[1])
     await render_pairs_view(callback.message, user_id)
+
+@router.callback_query(F.data.startswith("ustat_"))
+async def cb_ustat(callback: types.CallbackQuery):
+    """Admins viewing user stats list."""
+    if not await _check_admin(callback.from_user.id): return
+    
+    user_id = int(callback.data.split("_")[1])
+    from app.bot.keyboards import admin_stats_pairs_kb
+    pairs = await repost_service.get_user_pairs(user_id)
+    
+    if not pairs:
+        return await callback.message.edit_text("<b>No pairs yet.</b>", reply_markup=back_kb(f"uview_{user_id}"), parse_mode="HTML")
+    
+    await callback.message.edit_text(
+        f"<b>📊 Stats Dashboard: {user_id}</b>",
+        reply_markup=admin_stats_pairs_kb(user_id, pairs),
+        parse_mode="HTML"
+    )
+    await safe_callback_answer(callback)
+
+@router.callback_query(F.data.startswith("ustp_"))
+async def cb_ustp(callback: types.CallbackQuery):
+    """Admins viewing specific user pair stats."""
+    if not await _check_admin(callback.from_user.id): return
+    
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    
+    from app.bot.handlers.utils import render_pair_stats
+    from app.bot.keyboards import admin_stats_detail_kb
+    
+    # We'll use a trick here: Temporarily replace the keyboard of the utility
+    # Or just write a quick one here. Writing here is safer.
+    stats = await repost_service.get_effective_stats(user_id, pair_id)
+    if not stats: return await safe_callback_answer(callback, "Stats not found.", show_alert=True)
+    
+    # Re-use lines logic from render_pair_stats if possible, but keep it simple here
+    from app.bot.handlers.utils import translate_error, SCHEDULE_LABELS
+    lines = [f"<b>📊 Remote Stats: User {user_id}</b>", f"<i>Pair #{pair_id}</i>\n"]
+    lines.extend([
+        f"📫 <b>Source:</b> <code>{stats['source']}</code>",
+        f"📬 <b>Destination:</b> <code>{stats['destination']}</code>",
+        f"🕒 <b>Mode:</b> {SCHEDULE_LABELS.get(stats['schedule'], 'Instant')}",
+        "──────────────────"
+    ])
+    if stats.get("total", 0) > 0:
+        lines.append(f"📦 <b>Progress:</b> {stats['current']} / {stats['total']}")
+        lines.append(f"📥 <b>Remaining:</b> {stats['remaining']} posts")
+    else:
+        lines.append("<i>Stats loading or real-time only.</i>")
+        
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=admin_stats_detail_kb(user_id, pair_id),
+        parse_mode="HTML"
+    )
+    await safe_callback_answer(callback)
+
+@router.callback_query(F.data.startswith("uref_"))
+async def cb_uref(callback: types.CallbackQuery):
+    """Refresh remote stats."""
+    if not await _check_admin(callback.from_user.id): return
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    
+    await safe_callback_answer(callback, "⏳ Refreshing...")
+    await repost_service.sync_pair_stats(user_id, pair_id)
+    callback.data = f"ustp_{user_id}_{pair_id}"
+    await cb_ustp(callback)
