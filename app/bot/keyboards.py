@@ -273,6 +273,7 @@ def user_detail_kb(user_id: int, target_is_admin: bool, target_is_premium: bool)
     prem_label = "💎 Extend Premium" if target_is_premium else "💎 Grant Premium (1mo)"
     builder.button(text=prem_label, callback_data=f"uprem_{user_id}")
     
+    builder.button(text="➕ Create Pair", callback_data=f"uaddpair_{user_id}")
     builder.button(text="📋 View Pairs", callback_data=f"upairs_{user_id}")
     builder.button(text="📊 View Stats", callback_data=f"ustat_{user_id}")
     builder.button(text="🔙 Back to Users", callback_data="admin_users")

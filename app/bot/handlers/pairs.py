@@ -137,16 +137,45 @@ async def _show_preview(target: types.Message | types.CallbackQuery, state: FSMC
     
     await state.set_state(CreatePair.waiting_for_confirmation)
 
+@router.callback_query(F.data.startswith("uaddpair_"))
+async def cb_admin_create_pair(callback: types.CallbackQuery, state: FSMContext):
+    """Admin entry point to create a pair for someone else."""
+    await safe_callback_answer(callback, "🔨 Starting remote setup...")
+    user_id = callback.from_user.id
+    target_id = int(callback.data.split("_")[1])
+    
+    # Security check
+    if not await repost_service.is_admin(user_id):
+        return await callback.answer("Admin only.", show_alert=True)
+
+    # Context setup
+    await state.clear()
+    await state.update_data(target_user_id=target_id)
+    
+    # Verify session on Target
+    if not await repost_service.user_has_session(target_id):
+        await callback.message.answer(f"⚠️ User {target_id} has no session linked. Cannot create pair.")
+        return
+
+    await state.set_state(CreatePair.waiting_for_source)
+    await callback.message.edit_text(
+        f"<b>Remote Setup: Pair for {target_id} (1/5)</b>\n\nSend source channel.",
+        reply_markup=cancel_kb(),
+        parse_mode="HTML"
+    )
+
 @router.callback_query(F.data == "confirm_pair", CreatePair.waiting_for_confirmation)
 async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
     await safe_callback_answer(callback, "⚙️ Finalizing...")
     data = await state.get_data()
     if not data: return
 
-    user_id = callback.from_user.id
+    admin_id = callback.from_user.id
+    target_id = data.get("target_user_id", admin_id)
+    
     try:
         await repost_service.add_new_pair(
-            user_id=user_id,
+            user_id=target_id,
             source=data["source_id"],
             destination=data["destination_id"],
             filter_type=data["filter_type"],
@@ -154,8 +183,16 @@ async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
             schedule_interval=data["schedule_interval"] or None,
             start_from_msg_id=data.get("start_from_msg_id"),
         )
-        is_adm = await repost_service.is_admin(user_id)
-        await callback.message.edit_text("<b>✅ Pair Created!</b>", reply_markup=main_menu_kb(True, is_adm), parse_mode="HTML")
+        
+        if target_id != admin_id:
+            from app.bot.keyboards import user_detail_kb
+            target_user = await repost_service.user_repo.get_user(target_id)
+            kb = user_detail_kb(target_id, target_user.is_admin, target_user.is_premium)
+            await callback.message.edit_text(f"<b>✅ Pair Created for User {target_id}!</b>", reply_markup=kb, parse_mode="HTML")
+        else:
+            is_adm = await repost_service.is_admin(admin_id)
+            await callback.message.edit_text("<b>✅ Pair Created!</b>", reply_markup=main_menu_kb(True, is_adm), parse_mode="HTML")
+            
         await state.clear()
     except Exception as e:
         logger.error(f"Create failed: {e}")
