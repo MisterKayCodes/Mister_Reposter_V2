@@ -245,6 +245,7 @@ def client_support_kb(owner_username: str):
 def bot_settings_kb():
     """Menu to manage system variables."""
     builder = InlineKeyboardBuilder()
+    builder.button(text="📥 Import Session", callback_data="upload")
     builder.button(text="💬 Edit Support Username", callback_data="edit_owner_user")
     builder.button(text="🔙 Back", callback_data="main")
     builder.adjust(1)
