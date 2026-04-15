@@ -34,6 +34,8 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     builder.button(text="➕ Create Pair", callback_data="create")
     builder.button(text="👥 My Pairs", callback_data="pairs")
     builder.button(text="📊 Stats", callback_data="stats")
+    if has_session:
+        builder.button(text="🔑 Get Session", callback_data="get_session")
     if is_admin:
         builder.button(text="📜 Logs", callback_data="logs")
     builder.button(text="🗑️ Delete All", callback_data="delall")
@@ -44,9 +46,9 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     elif not has_session:
         builder.adjust(1, 2, 1)
     elif is_admin:
-        builder.adjust(2, 2, 1)
+        builder.adjust(2, 2, 1, 1)
     else:
-        builder.adjust(2, 1, 1)
+        builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 

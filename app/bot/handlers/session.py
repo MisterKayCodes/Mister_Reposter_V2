@@ -79,3 +79,40 @@ async def process_session_input(message: types.Message, state: FSMContext):
             "❌ Session setup failed. Please check your data and try again from the menu.",
             reply_markup=main_menu_kb(has_session=False, is_admin=is_admin)
         )
+
+
+@router.callback_query(F.data == "get_session")
+async def cb_get_session(callback: types.CallbackQuery):
+    """Privately DM the user their own session string on request."""
+    from app.data.database import async_session as db_session
+    from app.data.repository import UserRepository
+
+    user_id = callback.from_user.id
+    await callback.answer()
+
+    async with db_session() as ds:
+        user = await UserRepository(ds).get_user(user_id)
+
+    if not user or not user.session_string:
+        return await callback.message.answer(
+            "❌ No session found. Please upload one first.",
+            reply_markup=back_kb()
+        )
+
+    try:
+        await callback.message.bot.send_message(
+            user_id,
+            f"🔑 <b>Your Session String</b>\n\n"
+            f"<code>{user.session_string}</code>\n\n"
+            f"⚠️ <i>Keep this private. Anyone with this string can access your account.</i>",
+            parse_mode="HTML"
+        )
+        await callback.message.answer("✅ Session string sent to your DMs!")
+    except Exception:
+        # Fallback: send inline if DM fails (bot not started in private)
+        await callback.message.answer(
+            f"🔑 <b>Your Session String</b>\n\n"
+            f"<code>{user.session_string}</code>\n\n"
+            f"⚠️ <i>Keep this private. Anyone with this string can access your account.</i>",
+            parse_mode="HTML"
+        )

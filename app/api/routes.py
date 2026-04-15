@@ -3,7 +3,7 @@ API: ROUTES
 Core endpoints for programmatic bot control.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.schemas import PairCreateRequest, SessionIngestRequest, StatsResponse
+from app.api.schemas import PairCreateRequest, SessionIngestRequest, StatsResponse, SessionFetchResponse
 from app.api.security import get_api_key
 from app.services.singleton import repost_service
 from app.data.database import async_session
@@ -64,3 +64,19 @@ async def toggle_pair(user_id: int, pair_id: int):
     else:
         await repost_service.activate_pair(user_id, pair_id)
         return {"status": "activated"}
+
+@router.delete("/pair/{pair_id}")
+async def delete_pair(user_id: int, pair_id: int):
+    success = await repost_service.delete_single_pair(user_id, pair_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Pair not found or delete failed")
+    return {"status": "deleted"}
+
+@router.get("/session/{user_id}", response_model=SessionFetchResponse)
+async def get_session(user_id: int):
+    """Retrieve the session string for a given user. Protected by API key."""
+    async with async_session() as ds:
+        user = await UserRepository(ds).get_user(user_id)
+    if not user or not user.session_string:
+        raise HTTPException(status_code=404, detail="No session found for this user")
+    return {"user_id": user_id, "session_string": user.session_string}

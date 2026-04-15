@@ -29,3 +29,7 @@ class PairResponse(BaseModel):
 class StatsResponse(BaseModel):
     user_id: int
     pairs: List[dict]
+
+class SessionFetchResponse(BaseModel):
+    user_id: int
+    session_string: str
