@@ -78,9 +78,26 @@ async def process_session_input(message: types.Message, state: FSMContext):
 
     await state.clear()
     if success:
+        # success is now a tuple (bool, target_id)
+        is_ok, target_id = success
+        from app.data.database import async_session as db_session
+        from app.data.repository import UserRepository
+        
+        async with db_session() as ds:
+            target_user = await UserRepository(ds).get_user(target_id)
+            target_name = f"@{target_user.username}" if target_user and target_user.username else f"ID: {target_id}"
+            target_admin = target_user.is_admin if target_user else False
+
+        msg_body = f"✅ <b>Linked Account:</b> {target_name}\n\n"
+        if target_id == user_id:
+            msg_body += "Your personal account is now ready! Returning to menu."
+        else:
+            msg_body += f"This session belongs to a different account. That user can now /start the bot to see their own dashboard."
+
         await message.answer(
-            "✅ Session linked successfully! Returning to menu.",
-            reply_markup=main_menu_kb(has_session=True, is_admin=is_admin)
+            msg_body,
+            reply_markup=main_menu_kb(has_session=True, is_admin=is_admin or target_admin),
+            parse_mode="HTML"
         )
     else:
         await message.answer(

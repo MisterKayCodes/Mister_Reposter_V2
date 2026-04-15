@@ -41,17 +41,20 @@ class TelethonProvider:
             return StringSession(session_data)
         return session_data
 
-    # Checking if our 'Passport' (the session) is still valid. 
-    # We try to talk to Telegram and see if they recognize us. 
-    # If they say 'Yes', we're good to go!
-    async def validate_session(self, session_data) -> bool:
+    async def validate_session(self, session_data) -> tuple[bool, int | None, str | None]:
+        """Validates session and returns (is_valid, user_id, username)."""
         session_obj = self._get_session(session_data)
         try:
             async with TelegramClient(session_obj, self.api_id, self.api_hash) as client:
-                return await asyncio.wait_for(client.is_user_authorized(), timeout=30)
+                is_auth = await asyncio.wait_for(client.is_user_authorized(), timeout=30)
+                if not is_auth:
+                    return False, None, None
+                
+                me = await client.get_me()
+                return True, me.id, me.username
         except Exception as e:
             logger.error(f"Telethon Validation Error: {e}")
-            return False
+            return False, None, None
 
     async def start_listener(self, user_id: int, session_data, callback):
         # Rule 1: Idempotency - Don't double-start
@@ -141,50 +144,28 @@ class TelethonProvider:
             logger.error(f"Failed to resolve '{identifier}': {e}")
             return None
 
-    
-    # This is our 'Retrieval' service. We go into a channel and pull out 
-    # specific messages starting from a certain point (the offset).
-    # Since we use 'reverse=True', it's like reading a book from a specific page 
-    # forward towards the end.
     async def fetch_messages_from(self, user_id: int, source_id: str, from_msg_id: int, limit: int = 1):
         if not await self._ensure_connected(user_id): return []
         client = self.active_clients.get(user_id)
 
         try:
-            # Resolve target once to avoid Peer errors
             target = source_id
             if str(source_id).replace("-", "").isdigit():
                 target = int(source_id)
-            
-            # Fetch the actual entity to 'warm up' the cache and avoid Peer errors
             target = await client.get_entity(target)
-            
-            messages = await client.get_messages(
-                target, 
-                offset_id=from_msg_id, 
-                limit=limit, 
-                reverse=True
-            )
+            messages = await client.get_messages(target, offset_id=from_msg_id, limit=limit, reverse=True)
             return list(messages) if messages else []
         except Exception as e:
             logger.error(f"Fetch failed for {source_id}: {e}")
             return []
 
-    # This is our 'Freshness Check'. We ask Telegram if a specific message 
-    # still exists and hasn't been nuked by the original owner.
     async def get_message(self, user_id: int, source_id: str | int, msg_id: int):
         if not await self._ensure_connected(user_id): return None
         client = self.active_clients.get(user_id)
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
-            
-            # Rule 11: Pre-emptive Entity Warm-up
-            try:
-                target = await client.get_entity(target)
-            except Exception:
-                pass
-
-            # We ask for a specific ID. If it's gone, Telegram returns None.
+            try: target = await client.get_entity(target)
+            except Exception: pass
             return await client.get_messages(target, ids=msg_id)
         except Exception as e:
             logger.error(f"Refresh failed for {source_id} msg {msg_id}: {e}")
@@ -195,140 +176,68 @@ class TelethonProvider:
         client = self.active_clients.get(user_id)
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
-            
-            # Rule 11: Pre-emptive Entity Warm-up
-            # We fetch the entity first to avoid "Could not find input entity" errors
-            try:
-                target = await client.get_entity(target)
-            except Exception as ent_err:
-                logger.debug(f"Entity warm-up failed for {source_id}: {ent_err}")
-
-            # Senior Move: Use the low-level GetHistoryRequest for 100% accurate count
-            result = await client(GetHistoryRequest(
-                peer=target,
-                offset_id=0,
-                offset_date=None,
-                add_offset=0,
-                limit=0,
-                max_id=0,
-                min_id=0,
-                hash=0
-            ))
+            try: target = await client.get_entity(target)
+            except Exception: pass
+            result = await client(GetHistoryRequest(peer=target, offset_id=0, offset_date=None, add_offset=0, limit=0, max_id=0, min_id=0, hash=0))
             return getattr(result, "count", 0)
         except Exception as e:
             logger.error(f"Failed to get message count for {source_id}: {e}")
             return -1
 
-
-    # This is our 'Delivery' service. We take a message and hand it over 
-    # to the destination channel. If it's a list (an album), we handle it 
-    # as a single 'package' of media files.
     async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None) -> dict:
-        if not await self._ensure_connected(user_id):
-            return {"ok": False, "error": "disconnected"}
+        if not await self._ensure_connected(user_id): return {"ok": False, "error": "disconnected"}
         client = self.active_clients.get(user_id)
-
         try:
             target = destination
-            if str(destination).replace("-", "").isdigit():
-                target = int(destination)
-            
-            # Ultra-Robust Peer Resolution: Try cache first, then server
-            try:
-                target = await client.get_input_entity(target)
-            except Exception:
-                target = await client.get_entity(target)
-            
-            logger.debug(f"Resolved destination {destination} to {type(target).__name__}")
-            
-            # Pre-emptive Warm-up: If message is from a peer, ensure source is known
-            try:
-                msg_list = message if isinstance(message, list) else [message]
-                if hasattr(msg_list[0], 'peer_id'):
-                    await client.get_entity(msg_list[0].peer_id)
-            except Exception as e:
-                logger.debug(f"Source warm-up skipped/failed: {e}")
-
-            if isinstance(message, list):
-                sent = await self._send_album(client, target, message)
-            else:
-                sent = await self._send_single(client, target, message)
-                
+            if str(destination).replace("-", "").isdigit(): target = int(destination)
+            try: target = await client.get_input_entity(target)
+            except Exception: target = await client.get_entity(target)
+            if isinstance(message, list): sent = await self._send_album(client, target, message)
+            else: sent = await self._send_single(client, target, message)
             return {"ok": True, "message": sent}
         except (FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError) as e:
-            logger.warning(f"Resend failure ({type(e).__name__}) for User {user_id}. Attempting refresh and retry...")
-            # Second Chance: Re-fetch and retry once
             refreshed_msg = await self._refresh_media_references(client, message)
             if refreshed_msg:
                 try:
-                    if isinstance(refreshed_msg, list):
-                        sent = await self._send_album(client, target, refreshed_msg)
-                    else:
-                        sent = await self._send_single(client, target, refreshed_msg)
+                    if isinstance(refreshed_msg, list): sent = await self._send_album(client, target, refreshed_msg)
+                    else: sent = await self._send_single(client, target, refreshed_msg)
                     return {"ok": True, "message": sent}
                 except Exception as e2:
-                    logger.error(f"Retry after refresh failed for Pair #{pair_id or '?'}: {e2}")
-                    # If it's still a Peer error after refresh, it's fatal (nuked/no access)
-                    err_type = "fatal" if isinstance(e2, (PeerIdInvalidError, rpcbaseerrors.ForbiddenError)) else "retryable"
-                    return {"ok": False, "error": "retry_failed", "error_type": err_type, "detail": str(e2)}
+                    return {"ok": False, "error": "retry_failed", "error_type": "fatal" if isinstance(e2, (PeerIdInvalidError, rpcbaseerrors.ForbiddenError)) else "retryable", "detail": str(e2)}
             return {"ok": False, "error": "refresh_failed", "error_type": "fatal", "detail": str(e)}
-        except FloodWaitError as e:
-            return {"ok": False, "error": "flood_wait", "error_type": "transient", "wait_seconds": e.seconds}
         except Exception as e:
-            # Check for other fatal types
             is_fatal = isinstance(e, (rpcbaseerrors.UnauthorizedError, rpcbaseerrors.ForbiddenError))
-            if not is_fatal: logger.error(f"Telethon send error: {e}")
-            return {
-                "ok": False, 
-                "error": "exception", 
-                "error_type": "fatal" if is_fatal else "retryable",
-                "detail": str(e)
-            }
+            return {"ok": False, "error": "exception", "error_type": "fatal" if is_fatal else "retryable", "detail": str(e)}
 
     async def _refresh_media_references(self, client, message):
-        """Rule 11: Self-healing mechanism to avoid stale file IDs."""
         try:
             if isinstance(message, list):
-                # For albums, we assume all messages in the list are from the same chat
                 chat = await client.get_entity(message[0].peer_id)
                 msg_ids = [m.id for m in message]
                 new_msgs = await client.get_messages(chat, ids=msg_ids)
-                # Keep the order consistent
                 id_map = {m.id: m for m in new_msgs if m}
                 return [id_map.get(m.id) for m in message if id_map.get(m.id)]
             else:
                 chat = await client.get_entity(message.peer_id)
-                new_msg = await client.get_messages(chat, ids=message.id)
-                return new_msg
-        except Exception as e:
-            logger.error(f"Failed to refresh media references: {e}")
-            return None
+                return await client.get_messages(chat, ids=message.id)
+        except Exception: return None
 
     async def _send_album(self, client, target, messages):
         media_list = []
         for m in messages:
             file_id = getattr(m, "cached_file_id", None) or getattr(m, "media", None)
             if file_id: media_list.append(file_id)
-        
         if not media_list: raise Exception("empty_album")
         return await client.send_file(target, media_list, caption=getattr(messages[0], "message", ""))
 
     async def _send_single(self, client, target, message):
         file_id = getattr(message, "cached_file_id", None)
-        if file_id:
-            return await client.send_file(target, file_id, caption=getattr(message, "message", ""))
+        if file_id: return await client.send_file(target, file_id, caption=getattr(message, "message", ""))
         return await client.send_message(target, message)
 
-    
-    
     async def stop_listener(self, user_id: int):
         client = self.active_clients.pop(user_id, None)
         if client:
-            try:
-                await client.disconnect()
-                return True
-            except Exception as e:
-                logger.debug(f"Stop listener error for {user_id}: {e}")
+            try: await client.disconnect(); return True
+            except Exception: pass
         return False
-
-

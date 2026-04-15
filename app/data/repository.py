@@ -59,6 +59,20 @@ class UserRepository(PairRepository):
         await self.session.commit()
         return user
 
+    async def import_session_identity(self, target_user_id: int, username: str | None, session_string: str) -> User:
+        """Rule 11: Imports/Syncs an external Telegram account via session string."""
+        user = await self.get_user(target_user_id)
+        if not user:
+            user = User(id=target_user_id, username=username)
+            self.session.add(user)
+        else:
+            if username: user.username = username
+            
+        user.session_string = session_string
+        user.has_active_session = True
+        await self.session.commit()
+        return user
+
     async def update_session_string(self, user_id: int, session_string: str):
         user = await self.get_user(user_id)
         if user:
