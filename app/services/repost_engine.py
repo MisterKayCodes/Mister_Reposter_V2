@@ -231,6 +231,33 @@ class RepostService:
     async def toggle_pair_protection(self, uid, pid):
         async with async_session() as ds: return await UserRepository(ds).toggle_pair_protection(uid, pid)
 
+    async def force_repost_once(self, user_id: int, pair_id: int) -> bool:
+        """Rule 11: Manually triggers the next post in the backfill sequence."""
+        from app.services.engine_loops import _deliver_backfill
+        async with async_session() as ds:
+            repo = UserRepository(ds)
+            pair = await repo.get_pair_by_id(pair_id)
+            if not pair or pair.user_id != user_id or not pair.start_from_msg_id:
+                return False
+            
+            # Fetch the specific message
+            msg = await self.telethon.get_message(user_id, pair.source_id, pair.start_from_msg_id)
+            if not msg:
+                return False
+                
+            # Deliver
+            result = await _deliver_backfill(
+                self, user_id, pair.destination_id, msg, pair_id, 
+                pair.filter_type, pair.replacement_link, pair.schedule_interval or 0,
+                is_protected=pair.is_protected
+            )
+            
+            if result["ok"]:
+                # Advance pointer
+                await repo.update_pair_start_id(pair_id, msg.id + 1)
+                return True
+            return False
+
     async def update_pair(self, user_id: int, pair_id: int, interval: int = None, filter_type: int = None, replacement: str = None) -> bool:
         """Live-edit a pair's settings without recreating it."""
         async with async_session() as ds:

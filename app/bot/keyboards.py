@@ -76,6 +76,8 @@ def pairs_kb(pairs, target_id: int = None):
         
         builder.button(text=f"Delete #{idx}", callback_data=f"{prefix}del_{ext}{p.id}")
         
+        builder.button(text="🚀 Post One Now", callback_data=f"{prefix}force_{ext}{p.id}")
+        
     if len(pairs) < MAX_PAIRS:
         # Remote create or local create
         c_data = f"uaddpair_{target_id}" if target_id else "create"

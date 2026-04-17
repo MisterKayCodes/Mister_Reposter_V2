@@ -70,6 +70,20 @@ async def cb_toggle_protection(callback: types.CallbackQuery):
         await safe_callback_answer(callback, "⚠️ Error updating setting.", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("force_"))
+async def cb_force_repost(callback: types.CallbackQuery):
+    pair_id = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
+    await safe_callback_answer(callback, "🚀 Triggering one post...")
+    
+    success = await repost_service.force_repost_once(user_id, pair_id)
+    if success:
+        await callback.answer("✅ Success! Check your channel.", show_alert=True)
+    else:
+        await callback.answer("❌ Failed. Ensure pair is set up and pointer is valid.", show_alert=True)
+    await render_pairs_view(callback.message, user_id)
+
+
 # --- DELETE LOGIC ---
 
 @router.callback_query(F.data.startswith("del_"))
@@ -131,6 +145,15 @@ async def cb_remote_prot(callback: types.CallbackQuery):
     await repost_service.toggle_pair_protection(user_id, pair_id)
     await render_pairs_view(callback.message, user_id, is_remote=True)
     await safe_callback_answer(callback)
+
+@router.callback_query(F.data.startswith("uforce_"))
+async def cb_remote_force(callback: types.CallbackQuery):
+    if not await repost_service.is_admin(callback.from_user.id): return
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    await safe_callback_answer(callback, "🚀 Triggering remote post...")
+    await repost_service.force_repost_once(user_id, pair_id)
+    await render_pairs_view(callback.message, user_id, is_remote=True)
 
 @router.callback_query(F.data.startswith("udel_"))
 async def cb_remote_ask_delete(callback: types.CallbackQuery):
