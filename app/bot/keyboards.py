@@ -70,6 +70,9 @@ def pairs_kb(pairs, target_id: int = None):
         
         loop_label = "♻️ Loop: ON" if getattr(p, "loop_history", False) else "♻️ Loop: OFF"
         builder.button(text=loop_label, callback_data=f"{prefix}loop_{ext}{p.id}")
+
+        prot_label = "🔒 Prot: ON" if getattr(p, "is_protected", False) else "🔒 Prot: OFF"
+        builder.button(text=prot_label, callback_data=f"{prefix}prot_{ext}{p.id}")
         
         builder.button(text=f"Delete #{idx}", callback_data=f"{prefix}del_{ext}{p.id}")
         

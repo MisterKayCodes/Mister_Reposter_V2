@@ -15,7 +15,8 @@ class PairRepository:
     async def add_repost_pair(
         self, user_id: int, source: str, destination: str,
         filter_type: int = 1, replacement_link: str = None,
-        schedule_interval: int = None, start_from_msg_id: int = None
+        schedule_interval: int = None, start_from_msg_id: int = None,
+        is_protected: bool = False
     ):
         # Rule 5: Check for existing pairs to prevent duplicates
         existing = await self.session.execute(
@@ -38,7 +39,8 @@ class PairRepository:
             schedule_interval=schedule_interval,
             start_from_msg_id=start_from_msg_id,
             status="active",
-            is_active=True
+            is_active=True,
+            is_protected=is_protected
         )
         self.session.add(new_pair)
         await self.session.commit()
@@ -217,4 +219,18 @@ class PairRepository:
             pair.alerted_3d = status
             await self.session.commit()
             return True
+        return False
+    async def toggle_pair_protection(self, user_id: int, pair_id: int) -> bool:
+        """Rule 11: Toggles physical downloading for protected content."""
+        result = await self.session.execute(
+            select(RepostPair).where(
+                RepostPair.id == pair_id,
+                RepostPair.user_id == user_id
+            )
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.is_protected = not pair.is_protected
+            await self.session.commit()
+            return pair.is_protected
         return False

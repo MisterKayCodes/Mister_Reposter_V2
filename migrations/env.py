@@ -13,7 +13,7 @@ import os
 # Ensure the project root is in the path so we can find 'data'
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
 
-from data.models import Base  # <--- The Blueprint
+from app.data.models import Base  # <--- The Blueprint
 # ------------------------------------------
 
 config = context.config

@@ -66,7 +66,7 @@ async def run_backfill(service, user_id, source, destination, from_msg_id, filte
                 if ghost_status == "error":
                     break
 
-                stop, current_id = await _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes)
+                stop, current_id = await _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected=getattr(pair, "is_protected", False))
                 batch_advanced = True
                 if stop: break
 
@@ -83,9 +83,14 @@ async def run_backfill(service, user_id, source, destination, from_msg_id, filte
             logger.error(f"Error in backfill {pair_id}: {e}")
             await asyncio.sleep(60)
 
-async def _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes):
+async def _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected: bool = False):
     """Rule 8: Helper to flatten run_backfill."""
-    result = await _deliver_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes)
+    from app.utils.protection import AntiBanGuard
+    
+    # 1. Throttle if needed to avoid bans
+    await AntiBanGuard.throttle(pair_id, is_protected=is_protected)
+    
+    result = await _deliver_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected=is_protected)
     if result["ok"]:
         async with async_session() as ds:
             await UserRepository(ds).update_pair_start_id(pair_id, msg.id + 1)
@@ -140,12 +145,12 @@ async def _check_ghost(service, user_id, source, msg, pair_id):
         logger.warning(f"Ghost check failed for msg #{msg.id}: {e}")
         return "error"
 
-async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, interval):
+async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, interval, is_protected: bool = False):
     from app.core.repost.logic import MessageCleaner
     if msg.message:
         msg.message = MessageCleaner.clean(msg.message, mode=f_type, replacement=repl)
         
-    result = await service._send_with_retry(user_id, dest, msg, pair_id=pair_id)
+    result = await service._send_with_retry(user_id, dest, msg, pair_id=pair_id, is_protected=is_protected)
     if result["ok"]:
         next_dt = datetime.utcnow() + timedelta(minutes=interval)
         async with async_session() as ds:
@@ -166,8 +171,16 @@ async def flush_schedule_loop(service, pair_id, interval_minutes):
     queued = service.schedule_queue.pop(pair_id, [])
     if not queued: return
 
+    from app.data.database import async_session
+    from app.data.repository import UserRepository
+    
+    async with async_session() as ds:
+        repo = UserRepository(ds)
+        pair = await repo.get_pair_by_id(pair_id)
+        is_protected = getattr(pair, "is_protected", False)
+
     for item in queued:
-        await service._send_with_retry(item["user_id"], item["destination"], item["messages"], pair_id=pair_id)
+        await service._send_with_retry(item["user_id"], item["destination"], item["messages"], pair_id=pair_id, is_protected=is_protected)
     
     service.schedule_timers.pop(pair_id, None)
     service.next_post_info.pop(pair_id, None)

@@ -198,7 +198,7 @@ class TelethonProvider:
             logger.error(f"Failed to get message count for {source_id}: {e}")
             return -1
 
-    async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None) -> dict:
+    async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None, is_protected: bool = False) -> dict:
         if not await self._ensure_connected(user_id): return {"ok": False, "error": "disconnected"}
         client = self.active_clients.get(user_id)
         try:
@@ -206,6 +206,10 @@ class TelethonProvider:
             if str(destination).replace("-", "").isdigit(): target = int(destination)
             try: target = await client.get_input_entity(target)
             except Exception: target = await self._get_entity_safe(client, target)
+
+            if is_protected:
+                return await self._download_and_upload(client, target, message)
+
             if isinstance(message, list): sent = await self._send_album(client, target, message)
             else: sent = await self._send_single(client, target, message)
             return {"ok": True, "message": sent}
@@ -222,6 +226,47 @@ class TelethonProvider:
         except Exception as e:
             is_fatal = isinstance(e, (rpcbaseerrors.UnauthorizedError, rpcbaseerrors.ForbiddenError))
             return {"ok": False, "error": "exception", "error_type": "fatal" if is_fatal else "retryable", "detail": str(e)}
+
+    async def _download_and_upload(self, client, target, message):
+        """Bypasses content protection by physically downloading then uploading."""
+        import os
+        from app.utils.protection import AntiBanGuard
+        
+        # Rule 6: Safety First - Create temp dir
+        temp_dir = "scratch/temp_media"
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        try:
+            # We only handle single messages for protected mode for now (albums are rare in protected)
+            if isinstance(message, list): message = message[0]
+            
+            if not getattr(message, "media", None):
+                # If no media, just send as text
+                sent = await client.send_message(target, message.message)
+                return {"ok": True, "message": sent}
+
+            # 1. Download to local disk (streaming to avoid memory load)
+            logger.info(f"Protected Transfer: Downloading media from {message.id}...")
+            path = await client.download_media(message, file=temp_dir)
+            
+            if not path or not os.path.exists(path):
+                return {"ok": False, "error": "download_failed"}
+
+            # 2. Add Jitter to look human
+            await AntiBanGuard.human_jitter(base_seconds=5)
+
+            # 3. Upload to destination
+            logger.info(f"Protected Transfer: Uploading {os.path.basename(path)} to destination...")
+            sent = await client.send_file(target, path, caption=message.message)
+
+            # 4. Clean up immediately to save VPS space
+            if os.path.exists(path): os.remove(path)
+            
+            return {"ok": True, "message": sent}
+
+        except Exception as e:
+            logger.error(f"Protected Transfer Exception: {e}")
+            return {"ok": False, "error": str(e)}
 
     async def _refresh_media_references(self, client, message):
         try:

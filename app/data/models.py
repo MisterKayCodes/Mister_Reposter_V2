@@ -55,6 +55,9 @@ class RepostPair(Base):
 
     # Stats tracking
     total_posts_source: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Physical Scraping Mode
+    is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 

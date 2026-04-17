@@ -27,7 +27,7 @@ def compute_dedup_key(message) -> str | None:
         parts.append(hashlib.md5(message.message.encode()).hexdigest()[:12])
     return "|".join(parts) if parts else None
 
-async def send_with_retry(service, user_id, destination, message, pair_id=None):
+async def send_with_retry(service, user_id, destination, message, pair_id=None, is_protected=False):
     from app.data.database import async_session
     from app.data.repository import UserRepository
     
@@ -40,7 +40,7 @@ async def send_with_retry(service, user_id, destination, message, pair_id=None):
             if cached_id: m.cached_file_id = cached_id
 
     for attempt in range(4): # FLOOD_WAIT_MAX_RETRY + 1
-        result = await service.telethon.send_message(user_id, destination, message)
+        result = await service.telethon.send_message(user_id, destination, message, is_protected=is_protected)
         if result["ok"]:
             if pair_id:
                 async with async_session() as ds:

@@ -55,6 +55,21 @@ async def cb_toggle_loop(callback: types.CallbackQuery):
         await safe_callback_answer(callback, "⚠️ Error updating setting.", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("prot_"))
+async def cb_toggle_protection(callback: types.CallbackQuery):
+    pair_id = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
+    
+    try:
+        new_state = await repost_service.toggle_pair_protection(user_id, pair_id)
+        status = "ENABLED" if new_state else "DISABLED"
+        await safe_callback_answer(callback, f"🔒 Protected Mode: {status}")
+        await render_pairs_view(callback.message, user_id)
+    except Exception as e:
+        logger.error(f"Protection toggle failed: {e}")
+        await safe_callback_answer(callback, "⚠️ Error updating setting.", show_alert=True)
+
+
 # --- DELETE LOGIC ---
 
 @router.callback_query(F.data.startswith("del_"))
@@ -105,6 +120,15 @@ async def cb_remote_loop(callback: types.CallbackQuery):
     parts = callback.data.split("_")
     user_id, pair_id = int(parts[1]), int(parts[2])
     await repost_service.toggle_pair_recycling(user_id, pair_id)
+    await render_pairs_view(callback.message, user_id, is_remote=True)
+    await safe_callback_answer(callback)
+
+@router.callback_query(F.data.startswith("uprot_"))
+async def cb_remote_prot(callback: types.CallbackQuery):
+    if not await repost_service.is_admin(callback.from_user.id): return
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    await repost_service.toggle_pair_protection(user_id, pair_id)
     await render_pairs_view(callback.message, user_id, is_remote=True)
     await safe_callback_answer(callback)
 

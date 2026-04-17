@@ -46,6 +46,13 @@ async def main():
         repo = UserRepository(ds)
         await repo.ensure_schema_healed()
         
+    # Rule 11: Cleanup Temp Files
+    import shutil
+    import os
+    if os.path.exists("scratch/temp_media"):
+        shutil.rmtree("scratch/temp_media")
+        os.makedirs("scratch/temp_media")
+        
     logger.info("Database initialized and healed.")
 
     session = AiohttpSession(timeout=60)

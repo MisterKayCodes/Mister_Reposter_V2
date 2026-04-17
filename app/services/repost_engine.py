@@ -193,7 +193,7 @@ class RepostService:
         if p.schedule_interval and p.schedule_interval > 0:
             bundle = self.media_cache.cache_bundle(p.id, messages)
             self._enqueue_scheduled(p.id, user_id, p.destination_id, bundle, p.schedule_interval)
-        else: await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id)
+        else: await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id, is_protected=p.is_protected)
 
     def _enqueue_scheduled(self, pid, uid, dest, msgs, interval):
         if pid not in self.schedule_queue: self.schedule_queue[pid] = []
@@ -227,6 +227,9 @@ class RepostService:
 
     async def toggle_pair_recycling(self, uid, pid):
         async with async_session() as ds: return await UserRepository(ds).toggle_pair_loop(uid, pid)
+
+    async def toggle_pair_protection(self, uid, pid):
+        async with async_session() as ds: return await UserRepository(ds).toggle_pair_protection(uid, pid)
 
     async def update_pair(self, user_id: int, pair_id: int, interval: int = None, filter_type: int = None, replacement: str = None) -> bool:
         """Live-edit a pair's settings without recreating it."""
