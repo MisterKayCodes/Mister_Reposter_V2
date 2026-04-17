@@ -93,12 +93,15 @@ async def _process_single_backfill(service, user_id, destination, msg, pair_id, 
         return False, msg.id
     
     err = result.get("error", "unknown")
+    detail = result.get("detail", "")
+    full_err = f"{err} - {detail}" if detail else err
+
     if err in ["flood_wait", "timeout", "max_retries"]:
         logger.warning(f"Transient error {err} on Pair #{pair_id}. Sleeping 60s.")
         await asyncio.sleep(60)
         return True, msg.id # Stop the batch loop to retry later
     
-    await service._handle_pair_error(user_id, pair_id, f"Backfill failed: {err}")
+    await service._handle_pair_error(user_id, pair_id, f"Backfill failed: {full_err}")
     return True, msg.id # Fatal error
 
 def _is_pair_active(pair, pair_id):
