@@ -9,6 +9,7 @@ from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError, rpcbaseerrors
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest
 from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.types import DocumentAttributeVideo, DocumentAttributeFilename
 from telethon.sessions import StringSession
 
 logger = logging.getLogger(__name__)
@@ -232,13 +233,15 @@ class TelethonProvider:
             return {"ok": False, "error": "exception", "error_type": "fatal" if is_fatal else "retryable", "detail": str(e)}
 
     async def _download_and_upload(self, client, target, message):
-        """Bypasses content protection by physically downloading then uploading."""
+        """Bypasses content protection by physically downloading then uploading (preserving metadata)."""
         import os
         from app.utils.protection import AntiBanGuard
         
-        # Rule 6: Safety First - Create temp dir
+        # Rule 6: Safety First - Create temp dirs
         temp_dir = "scratch/temp_media"
+        thumb_dir = "scratch/temp_thumbs"
         os.makedirs(temp_dir, exist_ok=True)
+        os.makedirs(thumb_dir, exist_ok=True)
         
         try:
             # We only handle single messages for protected mode for now (albums are rare in protected)
@@ -249,22 +252,53 @@ class TelethonProvider:
                 sent = await client.send_message(target, message.message)
                 return {"ok": True, "message": sent}
 
-            # 1. Download to local disk (streaming to avoid memory load)
+            # 1. Extract Metadata (Attributes)
+            attrs = []
+            supports_streaming = False
+            if hasattr(message.media, 'document') and message.media.document:
+                for attr in message.media.document.attributes:
+                    if isinstance(attr, DocumentAttributeVideo):
+                        # Preserve dimensions and duration
+                        attrs.append(DocumentAttributeVideo(
+                            duration=attr.duration,
+                            w=attr.w,
+                            h=attr.h,
+                            supports_streaming=True
+                        ))
+                        supports_streaming = True
+                    elif isinstance(attr, DocumentAttributeFilename):
+                        # Rule: Preserve original filename as requested by USER
+                        attrs.append(DocumentAttributeFilename(file_name=attr.file_name))
+
+            # 2. Download Media and Thumbnail
             logger.info(f"Protected Transfer: Downloading media from {message.id}...")
             path = await client.download_media(message, file=temp_dir)
             
+            thumb_path = None
+            if hasattr(message, 'thumb') or (hasattr(message.media, 'document') and message.media.document.thumbs):
+                logger.debug(f"Protected Transfer: Downloading thumbnail for msg {message.id}...")
+                thumb_path = await client.download_media(message, thumb=-1, file=thumb_dir)
+
             if not path or not os.path.exists(path):
                 return {"ok": False, "error": "download_failed"}
 
-            # 2. Add Jitter to look human
+            # 3. Add Jitter to look human
             await AntiBanGuard.human_jitter(base_seconds=5)
 
-            # 3. Upload to destination
+            # 4. Upload to destination with preserved metadata
             logger.info(f"Protected Transfer: Uploading {os.path.basename(path)} to destination...")
-            sent = await client.send_file(target, path, caption=message.message)
+            sent = await client.send_file(
+                target, 
+                path, 
+                caption=message.message,
+                thumb=thumb_path,
+                attributes=attrs,
+                supports_streaming=supports_streaming
+            )
 
-            # 4. Clean up immediately to save VPS space
+            # 5. Clean up immediately to save VPS space
             if os.path.exists(path): os.remove(path)
+            if thumb_path and os.path.exists(thumb_path): os.remove(thumb_path)
             
             return {"ok": True, "message": sent}
 

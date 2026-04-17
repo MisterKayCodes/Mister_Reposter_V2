@@ -49,9 +49,10 @@ async def main():
     # Rule 11: Cleanup Temp Files
     import shutil
     import os
-    if os.path.exists("scratch/temp_media"):
-        shutil.rmtree("scratch/temp_media")
-        os.makedirs("scratch/temp_media")
+    for folder in ["scratch/temp_media", "scratch/temp_thumbs"]:
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+        os.makedirs(folder, exist_ok=True)
         
     logger.info("Database initialized and healed.")
 
