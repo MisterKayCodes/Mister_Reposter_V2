@@ -210,8 +210,13 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
             lines.append(f"<i>Pointer: msg #{p.start_from_msg_id or 1} | ♻️ Loop: {loop}</i>\n")
 
         await message.edit_text("\n".join(lines), reply_markup=pairs_kb(pairs, target_id=user_id if is_remote else None), parse_mode="HTML")
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e).lower():
+            pass # Ignore if UI is already identical
+        else:
+            logger.error(f"Pairs view Telegram error: {e}")
     except Exception as e:
-        logger.error(f"Pairs view error: {e}")
+        logger.error(f"Pairs view unexpected error: {e}")
 
 
 # --- CLIENT-FACING RENDERERS (SIMPLE UI) ---
