@@ -125,6 +125,20 @@ class TelethonProvider:
             logger.warning(f"Fallback check failed for {invite_hash}: {e2}")
         return {"id": None, "title": "already_joined"}
 
+    async def _get_entity_safe(self, client, identifier):
+        """Rule 6: Robust Entity Resolution with Cache Warm-up for StringSessions"""
+        try:
+            return await client.get_entity(identifier)
+        except ValueError as e:
+            if "Could not find the input entity" in str(e) or "Cannot find any entity" in str(e):
+                logger.warning(f"Entity {identifier} not in cache. Warming up dialogs...")
+                try:
+                    await client.get_dialogs(limit=200) # Fetch recent dialogs to build memory cache
+                    return await client.get_entity(identifier)
+                except Exception as e2:
+                    raise Exception(f"Failed to find entity {identifier} even after cache warm-up.")
+            raise e
+
     async def resolve_entity(self, user_id: int, identifier: str) -> dict | None:
         if not await self._ensure_connected(user_id): return None
         client = self.active_clients.get(user_id)
@@ -135,7 +149,7 @@ class TelethonProvider:
             if str(identifier).replace("-", "").isdigit():
                 target = int(identifier)
             
-            entity = await client.get_entity(target)
+            entity = await self._get_entity_safe(client, target)
             return {
                 "id": entity.id,
                 "title": getattr(entity, "title", getattr(entity, "username", "Unknown")),
@@ -152,7 +166,7 @@ class TelethonProvider:
             target = source_id
             if str(source_id).replace("-", "").isdigit():
                 target = int(source_id)
-            target = await client.get_entity(target)
+            target = await self._get_entity_safe(client, target)
             messages = await client.get_messages(target, offset_id=from_msg_id, limit=limit, reverse=True)
             return list(messages) if messages else []
         except Exception as e:
@@ -164,7 +178,7 @@ class TelethonProvider:
         client = self.active_clients.get(user_id)
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
-            try: target = await client.get_entity(target)
+            try: target = await self._get_entity_safe(client, target)
             except Exception: pass
             return await client.get_messages(target, ids=msg_id)
         except Exception as e:
@@ -176,7 +190,7 @@ class TelethonProvider:
         client = self.active_clients.get(user_id)
         try:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
-            try: target = await client.get_entity(target)
+            try: target = await self._get_entity_safe(client, target)
             except Exception: pass
             result = await client(GetHistoryRequest(peer=target, offset_id=0, offset_date=None, add_offset=0, limit=0, max_id=0, min_id=0, hash=0))
             return getattr(result, "count", 0)
@@ -191,7 +205,7 @@ class TelethonProvider:
             target = destination
             if str(destination).replace("-", "").isdigit(): target = int(destination)
             try: target = await client.get_input_entity(target)
-            except Exception: target = await client.get_entity(target)
+            except Exception: target = await self._get_entity_safe(client, target)
             if isinstance(message, list): sent = await self._send_album(client, target, message)
             else: sent = await self._send_single(client, target, message)
             return {"ok": True, "message": sent}
