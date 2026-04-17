@@ -201,6 +201,10 @@ class TelethonProvider:
     async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None, is_protected: bool = False) -> dict:
         if not await self._ensure_connected(user_id): return {"ok": False, "error": "disconnected"}
         client = self.active_clients.get(user_id)
+        
+        # DEBUG: Verify flag flow
+        logger.info(f"[DEBUG] Telethon send_message called for Pair #{pair_id}. Protected Mode: {is_protected}")
+        
         try:
             target = destination
             if str(destination).replace("-", "").isdigit(): target = int(destination)

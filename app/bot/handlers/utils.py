@@ -52,6 +52,7 @@ async def handle_channel_input(message: types.Message, state: FSMContext, step_n
         f"{step_name}_id": resolved["identifier"],
         f"{step_name}_kind": resolved["kind"],
         f"{step_name}_invite_hash": resolved.get("invite_hash"),
+        f"{step_name}_display": resolved.get("display_name"),
     })
     return resolved
 
@@ -197,7 +198,9 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
             if getattr(p, "status", "") == "error": status = "🔴 Error"
             
             lines.append(f"<b>Pair #{idx} [{status}]</b>")
-            lines.append(f"<code>{p.source_id}</code> ➔ <code>{p.destination_id}</code>")
+            src_display = getattr(p, "source_display", p.source_id)
+            dest_display = getattr(p, "destination_display", p.destination_id)
+            lines.append(f"<code>{src_display}</code> ➔ <code>{dest_display}</code>")
             
             if status == "🔴 Error":
                 lines.append(f"⚠️ <i>{translate_error(repost_service.last_errors.get(p.id))}</i>")

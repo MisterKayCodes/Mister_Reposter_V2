@@ -16,7 +16,8 @@ class PairRepository:
         self, user_id: int, source: str, destination: str,
         filter_type: int = 1, replacement_link: str = None,
         schedule_interval: int = None, start_from_msg_id: int = None,
-        is_protected: bool = False
+        is_protected: bool = False,
+        source_display: str = None, destination_display: str = None
     ):
         # Rule 5: Check for existing pairs to prevent duplicates
         existing = await self.session.execute(
@@ -40,7 +41,9 @@ class PairRepository:
             start_from_msg_id=start_from_msg_id,
             status="active",
             is_active=True,
-            is_protected=is_protected
+            is_protected=is_protected,
+            source_display=source_display,
+            destination_display=destination_display
         )
         self.session.add(new_pair)
         await self.session.commit()

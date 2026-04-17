@@ -178,6 +178,8 @@ async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
             user_id=target_id,
             source=data["source_id"],
             destination=data["destination_id"],
+            source_display=data.get("source_display"),
+            destination_display=data.get("destination_display"),
             filter_type=data["filter_type"],
             replacement_link=data.get("replacement_link"),
             schedule_interval=data["schedule_interval"] or None,

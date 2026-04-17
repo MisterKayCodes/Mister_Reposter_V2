@@ -129,7 +129,12 @@ class RepostService:
     async def add_new_pair(self, user_id, source, destination, **kwargs):
         async with async_session() as ds:
             repo = UserRepository(ds)
-            new_p = await repo.add_repost_pair(user_id, source, destination, **kwargs)
+            
+            # Pass display names if present
+            s_disp = kwargs.get('source_display')
+            d_disp = kwargs.get('destination_display')
+            
+            new_p = await repo.add_repost_pair(user_id, source, destination, source_display=s_disp, destination_display=d_disp, **kwargs)
             user = await repo.get_user(user_id)
             if user_id not in self._active_listeners and user.session_string:
                 await self.telethon.start_listener(user_id, user.session_string, self._handle_new_message)

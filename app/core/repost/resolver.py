@@ -11,12 +11,13 @@ _PRIVATE_POST = re.compile(r"(?:https?://)?t\.me/c/(\d+)(?:/(\d+))?$")
 _USERNAME = re.compile(r"^@?([A-Za-z][\w]{3,})$") # Rule: Optional @ for flexibility
 
 def resolve_channel_input(text: str | None, forwarded_chat=None) -> dict:
-    empty = {"identifier": None, "kind": None, "invite_hash": None, "msg_id": None}
+    empty = {"identifier": None, "kind": None, "invite_hash": None, "msg_id": None, "display_name": None}
 
     if forwarded_chat:
         chat_id = getattr(forwarded_chat, "id", None)
         if chat_id:
-            return {"identifier": str(chat_id), "kind": "forwarded", "invite_hash": None, "msg_id": None}
+            display = getattr(forwarded_chat, "title", str(chat_id))
+            return {"identifier": str(chat_id), "kind": "forwarded", "invite_hash": None, "msg_id": None, "display_name": display}
         return empty
 
     if not text:
@@ -28,7 +29,7 @@ def resolve_channel_input(text: str | None, forwarded_chat=None) -> dict:
     for regex, kind in [(_PRIVATE_INVITE, "invite"), (_LEGACY_INVITE, "invite")]:
         m = regex.match(raw)
         if m:
-            return {"identifier": raw, "kind": kind, "invite_hash": m.group(1), "msg_id": None}
+            return {"identifier": raw, "kind": kind, "invite_hash": m.group(1), "msg_id": None, "display_name": raw}
 
     # 2. Private Post Link (t.me/c/12345/678)
     m = _PRIVATE_POST.match(raw)
@@ -41,6 +42,7 @@ def resolve_channel_input(text: str | None, forwarded_chat=None) -> dict:
             "kind": "private_id",
             "invite_hash": None,
             "msg_id": int(m.group(2)) if m.group(2) else None,
+            "display_name": f"Private Post ({channel_id})"
         }
 
     # 3. Public Post Link or Username
@@ -51,16 +53,17 @@ def resolve_channel_input(text: str | None, forwarded_chat=None) -> dict:
             "kind": "username",
             "invite_hash": None,
             "msg_id": int(m.group(2)) if m.group(2) else None,
+            "display_name": f"@{m.group(1)}"
         }
 
     # 4. Numeric ID (Raw)
     clean = raw.lstrip("@").strip("/")
     if clean.replace("-", "").isdigit():
-        return {"identifier": clean, "kind": "numeric", "invite_hash": None, "msg_id": None}
+        return {"identifier": clean, "kind": "numeric", "invite_hash": None, "msg_id": None, "display_name": f"ID:{clean}"}
 
     # 5. Strict Username Match
     m = _USERNAME.match(raw)
     if m:
-        return {"identifier": m.group(1), "kind": "username", "invite_hash": None, "msg_id": None}
+        return {"identifier": m.group(1), "kind": "username", "invite_hash": None, "msg_id": None, "display_name": f"@{m.group(1)}"}
 
     return empty

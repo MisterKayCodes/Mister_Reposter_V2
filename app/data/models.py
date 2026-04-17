@@ -35,7 +35,8 @@ class RepostPair(Base):
 
     source_id: Mapped[str] = mapped_column(String)
     destination_id: Mapped[str] = mapped_column(String)
-
+    source_display: Mapped[str | None] = mapped_column(String, nullable=True)
+    destination_display: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_reposted_at: Mapped[datetime | None] = mapped_column(DateTime)
 
