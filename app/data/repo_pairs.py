@@ -236,4 +236,13 @@ class PairRepository:
             pair.is_protected = not pair.is_protected
             await self.session.commit()
             return pair.is_protected
+    async def update_caught_up_alert(self, pair_id: int, status: bool):
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.alerted_caught_up = status
+            await self.session.commit()
+            return True
         return False

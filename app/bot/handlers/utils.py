@@ -205,6 +205,14 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
             if status == "🔴 Error":
                 lines.append(f"⚠️ <i>{translate_error(repost_service.last_errors.get(p.id))}</i>")
                 
+            # UI Resilience Fix: Show the status of the Hybrid Watchdog or Queue
+            next_info = repost_service.next_post_info.get(p.id)
+            if next_info:
+                remaining = int(max(0, next_info["time"] - time.time()))
+                mins = remaining // 60
+                label = next_info.get("preview", "Next Post")
+                lines.append(f"⏱️ <b>{label}:</b> in {mins}m {remaining % 60}s")
+            
             loop = "ON" if getattr(p, "loop_history", False) else "OFF"
             lines.append(f"Filter: {FILTER_LABELS.get(p.filter_type)} | Sched: {SCHEDULE_LABELS.get(p.schedule_interval)}")
             lines.append(f"<i>Pointer: msg #{p.start_from_msg_id or 1} | ♻️ Loop: {loop}</i>\n")

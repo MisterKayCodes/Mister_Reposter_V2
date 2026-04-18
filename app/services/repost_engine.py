@@ -191,13 +191,24 @@ class RepostService:
             if msg.message: msg.message = MessageCleaner.clean(msg.message, mode=p.filter_type, replacement=p.replacement_link)
 
         if p.schedule_interval and p.schedule_interval > 0:
-            bundle = self.media_cache.cache_bundle(p.id, messages)
-            self._enqueue_scheduled(p.id, user_id, p.destination_id, bundle, p.schedule_interval)
+            msg_ids = [m.id for m in messages]
+            self._enqueue_scheduled(p.id, user_id, p.source_id, p.destination_id, msg_ids, p.schedule_interval)
+            
+            # UI: Show the timer immediately
+            self.next_post_info[p.id] = {
+                "time": time.time() + (p.schedule_interval * 60),
+                "preview": "Queueing Live Post..."
+            }
         else: await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id, is_protected=p.is_protected)
 
-    def _enqueue_scheduled(self, pid, uid, dest, msgs, interval):
+    def _enqueue_scheduled(self, pid, uid, source, dest, msg_ids, interval):
         if pid not in self.schedule_queue: self.schedule_queue[pid] = []
-        self.schedule_queue[pid].append({"user_id": uid, "destination": dest, "messages": msgs})
+        self.schedule_queue[pid].append({
+            "user_id": uid, 
+            "source_id": source,
+            "destination": dest, 
+            "msg_ids": msg_ids
+        })
         if pid not in self.schedule_timers or self.schedule_timers[pid].done():
             self.schedule_timers[pid] = asyncio.create_task(flush_schedule_loop(self, pid, interval))
 

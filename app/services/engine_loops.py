@@ -123,16 +123,31 @@ async def _check_3day_alert(service, user_id, pair, current_id, total, interval)
                 await UserRepository(ds).update_alert_3d(pair.id, True)
 
 async def _handle_cycle_end(service, user_id, pair, pair_id):
-    await service._notify_user(user_id, f"🎉 <b>Cycle Complete</b>\nOne of your Pairs has finished!")
     if pair.loop_history:
+        await service._notify_user(user_id, f"🎉 <b>Cycle Complete</b>\nOne of your Pairs has finished! Looping back to start...")
         async with async_session() as ds:
             repo = UserRepository(ds)
             await repo.update_pair_start_id(pair_id, 1)
             await repo.update_alert_3d(pair_id, False)
         await asyncio.sleep(15 * 60)
         return True
-    await asyncio.sleep(60)
-    return False
+    
+    # Rule 11: Resilient Watcher - Don't die, just watch.
+    import random
+    if not getattr(pair, "alerted_caught_up", False):
+        await service._notify_user(user_id, f"✅ <b>Caught Up</b>\nPair #{pair_id} has reached the latest content. Switching to <b>Sentinel Mode</b>.")
+        async with async_session() as ds:
+            await UserRepository(ds).update_caught_up_alert(pair_id, True)
+
+    # 5m + 1m random Jitter
+    jitter = random.randint(1, 60)
+    wait_time = (5 * 60) + jitter
+    service.next_post_info[pair_id] = {
+        "time": time.time() + wait_time,
+        "preview": "🔍 Watching for new posts..."
+    }
+    await asyncio.sleep(wait_time)
+    return True
 
 async def _check_ghost(service, user_id, source, msg, pair_id):
     """Returns 'ok', 'ghost', or 'error'."""
@@ -166,21 +181,52 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
     return result
 
 async def flush_schedule_loop(service, pair_id, interval_minutes):
-    """Refactored schedule flusher."""
+    """Refactored schedule flusher with Stateless 'Fresh Fetch'."""
+    # 1. Update UI Timer for the sleep duration
+    service.next_post_info[pair_id] = {
+        "time": time.time() + (interval_minutes * 60),
+        "preview": "⏳ Pending in Queue..."
+    }
     await asyncio.sleep(interval_minutes * 60)
+    
     queued = service.schedule_queue.pop(pair_id, [])
     if not queued: return
 
     from app.data.database import async_session
     from app.data.repository import UserRepository
+    from app.core.repost.logic import MessageCleaner
     
     async with async_session() as ds:
         repo = UserRepository(ds)
         pair = await repo.get_pair_by_id(pair_id)
+        if not _is_pair_active(pair, pair_id): return
         is_protected = getattr(pair, "is_protected", False)
+        f_type = pair.filter_type
+        repl = pair.replacement_link
 
     for item in queued:
-        await service._send_with_retry(item["user_id"], item["destination"], item["messages"], pair_id=pair_id, is_protected=is_protected)
+        # Rule: Fresh Fetch - Retrieve fresh attributes and file references 1s before sending
+        logger.info(f"Fresh Fetch: Re-retrieving msg_ids {item['msg_ids']} for Pair #{pair_id}")
+        fresh_msgs = await service.telethon.get_messages(item["user_id"], item["source_id"], item["msg_ids"])
+        if not fresh_msgs: continue
+        
+        # Ensure it's a list for album consistency
+        if not isinstance(fresh_msgs, list): fresh_msgs = [fresh_msgs]
+        
+        # Re-apply cleaning (in case original was changed or we want absolute freshness)
+        for m in fresh_msgs:
+            if m and m.message:
+                m.message = MessageCleaner.clean(m.message, mode=f_type, replacement=repl)
+
+        # Send
+        result = await service._send_with_retry(item["user_id"], item["destination"], fresh_msgs, pair_id=pair_id, is_protected=is_protected)
+        
+        # Handover Protocol: Update pointer in DB to avoid Watchdog double-processing
+        if result["ok"]:
+            last_id = max([m.id for m in fresh_msgs if m])
+            async with async_session() as ds:
+                await UserRepository(ds).update_pair_start_id(pair_id, last_id + 1)
+                await UserRepository(ds).update_caught_up_alert(pair_id, True) # Mark as caught up to prevent spam
     
     service.schedule_timers.pop(pair_id, None)
     service.next_post_info.pop(pair_id, None)

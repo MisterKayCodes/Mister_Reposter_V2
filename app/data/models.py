@@ -59,6 +59,7 @@ class RepostPair(Base):
 
     # Physical Scraping Mode
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
+    alerted_caught_up: Mapped[bool] = mapped_column(Boolean, default=False)
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 

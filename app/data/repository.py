@@ -22,13 +22,24 @@ class UserRepository(PairRepository):
         try:
             from sqlalchemy import text
             # SQLite specific column addition checks
-            for col in ["is_admin", "is_premium", "premium_until"]:
+            user_cols = ["is_admin", "is_premium", "premium_until"]
+            for col in user_cols:
                 try:
                     await self.session.execute(text(f"SELECT {col} FROM users LIMIT 1"))
                 except Exception:
                     logger.warning(f"Healing Schema: Adding {col} to users table.")
                     col_type = "DATETIME" if col == "premium_until" else "BOOLEAN"
                     await self.session.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
+            
+            # Pair table healing
+            pair_cols = ["is_protected", "alerted_caught_up", "source_display", "destination_display"]
+            for col in pair_cols:
+                try:
+                    await self.session.execute(text(f"SELECT {col} FROM repost_pairs LIMIT 1"))
+                except Exception:
+                    logger.warning(f"Healing Schema: Adding {col} to repost_pairs table.")
+                    col_type = "BOOLEAN" if "alerted" in col or "protected" in col else "VARCHAR"
+                    await self.session.execute(text(f"ALTER TABLE repost_pairs ADD COLUMN {col} {col_type}"))
             
             # Seed default settings
             owner = await self.get_setting("owner_username")
