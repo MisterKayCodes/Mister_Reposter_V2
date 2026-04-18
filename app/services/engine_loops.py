@@ -165,7 +165,10 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
     if msg.message:
         msg.message = MessageCleaner.clean(msg.message, mode=f_type, replacement=repl)
         
-    result = await service._send_with_retry(user_id, dest, msg, pair_id=pair_id, is_protected=is_protected)
+    notifier = service._get_progress_notifier(user_id) if is_protected else None
+    if notifier: await notifier("Backfill: Fetching protected media...")
+        
+    result = await service._send_with_retry(user_id, dest, msg, pair_id=pair_id, is_protected=is_protected, progress_callback=notifier)
     if result["ok"]:
         next_dt = datetime.utcnow() + timedelta(minutes=interval)
         async with async_session() as ds:
@@ -219,7 +222,10 @@ async def flush_schedule_loop(service, pair_id, interval_minutes):
                 m.message = MessageCleaner.clean(m.message, mode=f_type, replacement=repl)
 
         # Send
-        result = await service._send_with_retry(item["user_id"], item["destination"], fresh_msgs, pair_id=pair_id, is_protected=is_protected)
+        notifier = service._get_progress_notifier(item["user_id"]) if is_protected else None
+        if notifier: await notifier("Schedule: Commencing surgical relay...")
+        
+        result = await service._send_with_retry(item["user_id"], item["destination"], fresh_msgs, pair_id=pair_id, is_protected=is_protected, progress_callback=notifier)
         
         # Handover Protocol: Update pointer in DB to avoid Watchdog double-processing
         if result["ok"]:

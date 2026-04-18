@@ -147,6 +147,21 @@ class RepostService:
 
     async def _send_with_retry(self, *args, **kwargs): return await send_with_retry(self, *args, **kwargs)
 
+    def _get_progress_notifier(self, user_id):
+        """Creates a closure that manages a single status message in Telegram."""
+        status_msg = [None] # Use list to allow closure modification
+        async def notifier(text):
+            if not self._bot: return
+            try:
+                if status_msg[0] is None:
+                    msg = await self._bot.send_message(user_id, f"🔄 {text}")
+                    status_msg[0] = msg.message_id
+                else:
+                    await self._bot.edit_message_text(f"🔄 {text}", user_id, status_msg[0])
+            except Exception as e:
+                logger.error(f"Notifier failed: {e}")
+        return notifier
+
     async def _handle_new_message(self, message, user_id):
         if not (message.message or message.media): return
         if message.grouped_id:
@@ -200,7 +215,10 @@ class RepostService:
                 "time": time.time() + (p.schedule_interval * 60),
                 "preview": "Queueing Live Post..."
             }
-        else: await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id, is_protected=p.is_protected)
+        notifier = self._get_progress_notifier(user_id) if p.is_protected else None
+        if notifier: await notifier("Detecting protected content. Starting surgical bypass...")
+        
+        await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id, is_protected=p.is_protected, progress_callback=notifier)
 
     def _enqueue_scheduled(self, pid, uid, source, dest, msg_ids, interval):
         if pid not in self.schedule_queue: self.schedule_queue[pid] = []

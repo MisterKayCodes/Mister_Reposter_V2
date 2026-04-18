@@ -199,7 +199,7 @@ class TelethonProvider:
             logger.error(f"Failed to get message count for {source_id}: {e}")
             return -1
 
-    async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None, is_protected: bool = False) -> dict:
+    async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None, is_protected: bool = False, progress_callback=None) -> dict:
         if not await self._ensure_connected(user_id): return {"ok": False, "error": "disconnected"}
         client = self.active_clients.get(user_id)
         
@@ -213,7 +213,7 @@ class TelethonProvider:
             except Exception: target = await self._get_entity_safe(client, target)
 
             if is_protected:
-                return await self._download_and_upload(client, target, message)
+                return await self._download_and_upload(client, target, message, progress_callback=progress_callback)
 
             if isinstance(message, list): sent = await self._send_album(client, target, message)
             else: sent = await self._send_single(client, target, message)
@@ -232,7 +232,7 @@ class TelethonProvider:
             is_fatal = isinstance(e, (rpcbaseerrors.UnauthorizedError, rpcbaseerrors.ForbiddenError))
             return {"ok": False, "error": "exception", "error_type": "fatal" if is_fatal else "retryable", "detail": str(e)}
 
-    async def _download_and_upload(self, client, target, message):
+    async def _download_and_upload(self, client, target, message, progress_callback=None):
         """Bypasses content protection by physically downloading then uploading (preserving metadata)."""
         import os
         from app.utils.protection import AntiBanGuard
@@ -283,9 +283,11 @@ class TelethonProvider:
                 return {"ok": False, "error": "download_failed"}
 
             # 3. Add Jitter to look human
+            if progress_callback: await progress_callback("📥 Download Complete. Preparing surgical transfer...")
             await AntiBanGuard.human_jitter(base_seconds=5)
-
+            
             # 4. Upload to destination with preserved metadata
+            if progress_callback: await progress_callback("📤 Surgical Transfer: Uploading to destination...")
             logger.info(f"Protected Transfer: Uploading {os.path.basename(path)} to destination...")
             sent = await client.send_file(
                 target, 
@@ -300,6 +302,8 @@ class TelethonProvider:
             if os.path.exists(path): os.remove(path)
             if thumb_path and os.path.exists(thumb_path): os.remove(thumb_path)
             
+            logger.info(f"Protected Transfer: SUCCESS. File {os.path.basename(path)} posted to destination.")
+            if progress_callback: await progress_callback("✅ Transfer Successful. Media posted.")
             return {"ok": True, "message": sent}
 
         except Exception as e:
