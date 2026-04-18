@@ -46,7 +46,9 @@ class RepostPair(Base):
     schedule_interval: Mapped[int | None] = mapped_column(Integer, nullable=True)
     start_from_msg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     next_allowed_post_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_reposted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    consecutive_heals: Mapped[int] = mapped_column(Integer, default=0)
     error_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(16), default="active")
 

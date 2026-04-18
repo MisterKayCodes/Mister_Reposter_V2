@@ -172,7 +172,9 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
     if result["ok"]:
         next_dt = datetime.utcnow() + timedelta(minutes=interval)
         async with async_session() as ds:
-            await UserRepository(ds).update_next_post_time(pair_id, next_dt)
+            repo = UserRepository(ds)
+            await repo.update_next_post_time(pair_id, next_dt)
+            await repo.update_last_reposted_at(pair_id)
         
         service.next_post_info[pair_id] = {
             "time": time.time() + (interval * 60),
@@ -231,8 +233,10 @@ async def flush_schedule_loop(service, pair_id, interval_minutes):
         if result["ok"]:
             last_id = max([m.id for m in fresh_msgs if m])
             async with async_session() as ds:
-                await UserRepository(ds).update_pair_start_id(pair_id, last_id + 1)
-                await UserRepository(ds).update_caught_up_alert(pair_id, True) # Mark as caught up to prevent spam
+                repo = UserRepository(ds)
+                await repo.update_pair_start_id(pair_id, last_id + 1)
+                await repo.update_caught_up_alert(pair_id, True) # Mark as caught up to prevent spam
+                await repo.update_last_reposted_at(pair_id)
     
     service.schedule_timers.pop(pair_id, None)
     service.next_post_info.pop(pair_id, None)

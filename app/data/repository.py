@@ -32,13 +32,16 @@ class UserRepository(PairRepository):
                     await self.session.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
             
             # Pair table healing
-            pair_cols = ["is_protected", "alerted_caught_up", "source_display", "destination_display"]
+            pair_cols = ["is_protected", "alerted_caught_up", "source_display", "destination_display", "last_reposted_at", "consecutive_heals"]
             for col in pair_cols:
                 try:
                     await self.session.execute(text(f"SELECT {col} FROM repost_pairs LIMIT 1"))
                 except Exception:
                     logger.warning(f"Healing Schema: Adding {col} to repost_pairs table.")
-                    col_type = "BOOLEAN" if "alerted" in col or "protected" in col else "VARCHAR"
+                    if col == "last_reposted_at": col_type = "DATETIME"
+                    elif col == "consecutive_heals": col_type = "INTEGER"
+                    elif "alerted" in col or "protected" in col: col_type = "BOOLEAN"
+                    else: col_type = "VARCHAR"
                     await self.session.execute(text(f"ALTER TABLE repost_pairs ADD COLUMN {col} {col_type}"))
             
             # Seed default settings

@@ -199,6 +199,31 @@ class PairRepository:
             return True
         return False
 
+    async def update_last_reposted_at(self, pair_id: int):
+        """Rule 11: Stamps the exact time of successful delivery for Heartbeat tracking."""
+        from datetime import datetime
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.last_reposted_at = datetime.utcnow()
+            pair.consecutive_heals = 0 # Reset heals on success
+            await self.session.commit()
+            return True
+        return False
+
+    async def increment_consecutive_heals(self, pair_id: int):
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.consecutive_heals = (pair.consecutive_heals or 0) + 1
+            await self.session.commit()
+            return pair.consecutive_heals
+        return 0
+
     async def toggle_pair_loop(self, user_id: int, pair_id: int) -> bool:
         result = await self.session.execute(
             select(RepostPair).where(
