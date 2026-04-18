@@ -30,11 +30,21 @@ async def run_api_server():
     await server.serve()
 
 async def main():
-    # 1. GATEKEEPERS
-    from app.infrastructure.checks.architecture_inspector import scan_organism
-    if not scan_organism():
-        logger.critical("Architecture Integrity Check FAILED.")
+    # 1. GATEKEEPERS (The Guardian)
+    from infrastructure.checks.guardian import Guardian
+    g = Guardian(pkg="app")
+    g.scan(fix=False)
+    
+    critical_cats = {"Security", "Architecture", "API Safety"}
+    criticals = [v for v in g.all_violations if v.category in critical_cats]
+    
+    if criticals:
+        logger.critical(f"GUARD DENIED BOOT: {len(criticals)} critical violations found.")
+        for v in criticals:
+            logger.error(f"  [{v.category}] {v.message}")
         return
+    
+    logger.info(f"GUARD PASSED: {len(g.all_violations)} minor violations (Constitution/Quality) allowed.")
 
     # 2. INITIALIZATION
     await init_db()
