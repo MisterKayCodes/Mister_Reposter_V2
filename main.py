@@ -70,6 +70,7 @@ async def main():
     bot = Bot(token=config.BOT_TOKEN.get_secret_value(), session=session)
     repost_service.set_bot(bot)
     await repost_service.recover_all_listeners()
+    repost_service.heartbeat.start()
     
     dp = Dispatcher(storage=MemoryStorage())
     dp.update.outer_middleware(NetworkRetryMiddleware())

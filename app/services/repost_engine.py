@@ -27,7 +27,6 @@ class RepostService:
         self.next_post_info, self.last_errors = {}, {}
         self._dedup_seen = {}
         self.heartbeat = HeartbeatMonitor(self)
-        self.heartbeat.start()
 
     def set_bot(self, bot): self._bot = bot
 
