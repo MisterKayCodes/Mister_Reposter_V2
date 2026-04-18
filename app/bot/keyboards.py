@@ -255,4 +255,3 @@ def client_support_kb(owner_username: str):
     builder.button(text="🔙 Back", callback_data="main")
     builder.adjust(1)
     return builder.as_markup()
-
