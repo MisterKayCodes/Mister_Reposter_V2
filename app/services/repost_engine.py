@@ -7,7 +7,10 @@ import logging
 import asyncio
 from app.services.engine_loops import run_backfill, flush_schedule_loop
 from app.services.stats_service import get_pair_stats
-from app.services.engine_utils import compute_dedup_key, send_with_retry, process_album_waiter
+from app.services.engine_utils import (
+    compute_dedup_key, send_with_retry, process_album_waiter,
+    MessageClassifier, MessageClassification
+)
 from app.services.autonomic import HeartbeatMonitor
 from app.services.media_cache import MediaCache
 from app.providers.telethon_client import TelethonProvider
@@ -26,6 +29,7 @@ class RepostService:
         self._active_listeners = set()
         self.next_post_info, self.last_errors = {}, {}
         self._dedup_seen = {}
+        self.failed_media_lock = {} # Rule 11: Failed Media Lock (Pair ID -> Set of Msg IDs)
         self.heartbeat = HeartbeatMonitor(self)
 
     def set_bot(self, bot): self._bot = bot
@@ -198,6 +202,27 @@ class RepostService:
                     break
 
     async def _process_matched_pair(self, p, user_id, messages):
+        # 1. Triage Phase (Pre-check)
+        locked_ids = self.failed_media_lock.get(p.id, set())
+        if any(m.id in locked_ids for m in messages):
+            logger.warning(f"FML Skip: Pair #{p.id} msg {[m.id for m in messages]} is LOCKED.")
+            return
+
+        classification = MessageClassifier.classify(messages)
+        if classification == MessageClassification.BROKEN:
+            logger.error(f"Classification: BROKEN. Locking msg {[m.id for m in messages]} for Pair #{p.id}")
+            if p.id not in self.failed_media_lock: self.failed_media_lock[p.id] = set()
+            for m in messages: self.failed_media_lock[p.id].add(m.id)
+            return
+            
+        is_protected = p.is_protected
+        if classification == MessageClassification.PROTECTED:
+            logger.info(f"Classification: PROTECTED. Auto-enabling bypass for Pair #{p.id}")
+            is_protected = True
+
+        if classification == MessageClassification.HEAVY:
+            logger.info(f"Classification: HEAVY. Resource intensive post detected for Pair #{p.id}")
+
         key = compute_dedup_key(messages[0])
         if key and key in self._dedup_seen.get(p.id, {}): return
         if key: 
@@ -217,10 +242,10 @@ class RepostService:
                 "time": time.time() + (p.schedule_interval * 60),
                 "preview": "Queueing Live Post..."
             }
-        notifier = self._get_progress_notifier(user_id) if p.is_protected else None
+        notifier = self._get_progress_notifier(user_id) if is_protected else None
         if notifier: await notifier("Detecting protected content. Starting surgical bypass...")
         
-        await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id, is_protected=p.is_protected, progress_callback=notifier)
+        await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id, is_protected=is_protected, progress_callback=notifier)
 
     def _enqueue_scheduled(self, pid, uid, source, dest, msg_ids, interval):
         if pid not in self.schedule_queue: self.schedule_queue[pid] = []

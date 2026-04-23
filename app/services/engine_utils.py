@@ -9,6 +9,59 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+class MessageClassification:
+    SAFE = "safe"
+    HEAVY = "heavy"
+    PROTECTED = "protected"
+    BROKEN = "broken"
+
+class MessageClassifier:
+    @staticmethod
+    def classify(message) -> str:
+        """Rule 11: Triage phase before any network or disk activity."""
+        if not message: return MessageClassification.BROKEN
+        
+        # 1. Handle Albums (list of messages)
+        msgs = message if isinstance(message, list) else [message]
+        
+        is_protected = False
+        is_heavy = False
+        is_broken = False
+        
+        for m in msgs:
+            if not m:
+                is_broken = True
+                continue
+            # Check for basic availability
+            if not (getattr(m, 'message', None) or getattr(m, 'media', None)):
+                is_broken = True
+                continue
+                
+            # Check for protection (noforward)
+            if getattr(m, 'noforward', False):
+                is_protected = True
+                
+            # Check media properties
+            media = getattr(m, 'media', None)
+            if media:
+                # Self-destructing media
+                if hasattr(media, 'ttl_seconds') and media.ttl_seconds:
+                    is_broken = True
+                
+                # Size check
+                size = 0
+                if hasattr(media, 'document') and media.document:
+                    size = media.document.size
+                
+                if size > 50 * 1024 * 1024: # Increased to 50MB for 'Heavy'
+                    is_heavy = True
+        
+        if is_broken: return MessageClassification.BROKEN
+        if is_protected: return MessageClassification.PROTECTED
+        if is_heavy: return MessageClassification.HEAVY
+        return MessageClassification.SAFE
+
+
 def compute_dedup_key(message) -> str | None:
     parts = []
     msg_id = getattr(message, "id", None)
@@ -56,6 +109,18 @@ async def send_with_retry(service, user_id, destination, message, pair_id=None, 
             
         if result.get("error_type") == "fatal":
             if pair_id:
+                detail = str(result.get("detail", "")).lower()
+                # Rule 11: Failed Media Lock - Detect 'landmine' messages
+                if any(x in detail for x in ["media_invalid", "file_reference", "media_empty"]):
+                    if not hasattr(service, 'failed_media_lock'): service.failed_media_lock = {}
+                    if pair_id not in service.failed_media_lock: service.failed_media_lock[pair_id] = set()
+                    
+                    m_list = message if isinstance(message, list) else [message]
+                    for m in m_list: service.failed_media_lock[pair_id].add(m.id)
+                    
+                    logger.critical(f"FML (Failed Media Lock): Pair #{pair_id} locked msg ids {[m.id for m in m_list]} due to: {detail}")
+                    return {"ok": False, "error": "broken_media", "error_type": "fatal"}
+
                 asyncio.create_task(service._handle_pair_error(user_id, pair_id, result.get("detail", "Unknown fatal error")))
             return result
             

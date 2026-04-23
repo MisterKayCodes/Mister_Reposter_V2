@@ -9,6 +9,7 @@ from app.data.database import async_session
 from app.data.repository import UserRepository
 from telethon.errors import rpcbaseerrors
 from datetime import datetime, timedelta
+from app.services.engine_utils import MessageClassifier, MessageClassification
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,12 @@ async def _process_single_backfill(service, user_id, destination, msg, pair_id, 
     if result["ok"]:
         async with async_session() as ds:
             await UserRepository(ds).update_pair_start_id(pair_id, msg.id + 1)
-        await asyncio.sleep(interval_minutes * 60)
+        
+        if not result.get("skipped"):
+            await asyncio.sleep(interval_minutes * 60)
+        else:
+            await asyncio.sleep(0.5) # Minimal jitter for skipped posts
+            
         return False, msg.id
     
     err = result.get("error", "unknown")
@@ -161,6 +167,24 @@ async def _check_ghost(service, user_id, source, msg, pair_id):
         return "error"
 
 async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, interval, is_protected: bool = False):
+    # 1. Pre-check: Failed Media Lock
+    locked_ids = service.failed_media_lock.get(pair_id, set())
+    if msg.id in locked_ids:
+        logger.warning(f"Backfill FML: Skipping locked msg #{msg.id} for Pair #{pair_id}")
+        return {"ok": True, "skipped": True}
+
+    # 2. Pre-check: Classification
+    classification = MessageClassifier.classify(msg)
+    if classification == MessageClassification.BROKEN:
+        logger.error(f"Backfill Triage: msg #{msg.id} is BROKEN. Locking.")
+        if pair_id not in service.failed_media_lock: service.failed_media_lock[pair_id] = set()
+        service.failed_media_lock[pair_id].add(msg.id)
+        return {"ok": True, "skipped": True}
+
+    if classification == MessageClassification.PROTECTED:
+        logger.info(f"Backfill Triage: msg #{msg.id} is PROTECTED. Auto-enabling bypass.")
+        is_protected = True
+
     from app.core.repost.logic import MessageCleaner
     if msg.message:
         msg.message = MessageCleaner.clean(msg.message, mode=f_type, replacement=repl)
@@ -214,10 +238,27 @@ async def flush_schedule_loop(service, pair_id, interval_minutes):
         logger.info(f"Fresh Fetch: Re-retrieving msg_ids {item['msg_ids']} for Pair #{pair_id}")
         fresh_msgs = await service.telethon.get_messages(item["user_id"], item["source_id"], item["msg_ids"])
         if not fresh_msgs: continue
-        
-        # Ensure it's a list for album consistency
         if not isinstance(fresh_msgs, list): fresh_msgs = [fresh_msgs]
+
+        # 1. Pre-check: Failed Media Lock
+        locked_ids = service.failed_media_lock.get(pair_id, set())
+        if any(m.id in locked_ids for m in fresh_msgs if m):
+            logger.warning(f"Schedule FML: Skipping locked msg ids {item['msg_ids']} for Pair #{pair_id}")
+            continue
+
+        # 2. Pre-check: Classification
+        classification = MessageClassifier.classify(fresh_msgs)
+        if classification == MessageClassification.BROKEN:
+            logger.error(f"Schedule Triage: msg ids {item['msg_ids']} is BROKEN. Locking.")
+            if pair_id not in service.failed_media_lock: service.failed_media_lock[pair_id] = set()
+            for m in fresh_msgs: 
+                if m: service.failed_media_lock[pair_id].add(m.id)
+            continue
         
+        if classification == MessageClassification.PROTECTED:
+            logger.info(f"Schedule Triage: msg ids {item['msg_ids']} is PROTECTED. Auto-enabling bypass.")
+            is_protected = True
+
         # Re-apply cleaning (in case original was changed or we want absolute freshness)
         for m in fresh_msgs:
             if m and m.message:
