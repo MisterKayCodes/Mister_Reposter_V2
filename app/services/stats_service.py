@@ -25,10 +25,30 @@ async def get_pair_stats(service, user_id: int, pair_id: int):
         remaining = max(0, total - current) if total > 0 else 0
         time_left_min = remaining * (pair.schedule_interval or 0)
         
+        # Rule 11: Lazy Healing for display names
+        src_disp = pair.source_display or pair.source_id
+        dest_disp = pair.destination_display or pair.destination_id
+        
+        if not pair.source_display or not pair.destination_display:
+            try:
+                # Try to resolve names if they are numeric IDs
+                if not pair.source_display:
+                    res = await service.telethon.resolve_entity(user_id, pair.source_id)
+                    if res: 
+                        pair.source_display = res.get("title") or res.get("id")
+                        src_disp = pair.source_display
+                if not pair.destination_display:
+                    res = await service.telethon.resolve_entity(user_id, pair.destination_id)
+                    if res: 
+                        pair.destination_display = res.get("title") or res.get("id")
+                        dest_disp = pair.destination_display
+                await ds.commit()
+            except Exception: pass
+
         return {
             "id": pair_id, "current": current, "total": total,
             "remaining": remaining, "time_left_min": time_left_min,
-            "source": pair.source_id, "destination": pair.destination_id,
+            "source": src_disp, "destination": dest_disp,
             "schedule": pair.schedule_interval, "is_active": pair.is_active,
             "next_post": service.next_post_info.get(pair_id),
             "loop_history": pair.loop_history,

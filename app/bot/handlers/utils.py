@@ -198,9 +198,15 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
             if getattr(p, "status", "") == "error": status = "🔴 Error"
             
             lines.append(f"<b>Pair #{idx} [{status}]</b>")
-            src_display = getattr(p, "source_display", p.source_id)
-            dest_display = getattr(p, "destination_display", p.destination_id)
-            lines.append(f"<code>{src_display}</code> ➔ <code>{dest_display}</code>")
+            # Rule 11: Display name fallback logic
+            src_display = p.source_display or p.source_id
+            dest_display = p.destination_display or p.destination_id
+            
+            # Formatting for IDs to be more readable
+            src_str = f"@{src_display}" if isinstance(src_display, str) and not src_display.startswith("-") and not src_display.isdigit() else src_display
+            dest_str = f"@{dest_display}" if isinstance(dest_display, str) and not dest_display.startswith("-") and not dest_display.isdigit() else dest_display
+            
+            lines.append(f"<code>{src_str}</code> ➔ <code>{dest_str}</code>")
             
             if status == "🔴 Error":
                 lines.append(f"⚠️ <i>{translate_error(repost_service.last_errors.get(p.id))}</i>")

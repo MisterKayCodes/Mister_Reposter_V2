@@ -121,6 +121,16 @@ class UserRepository(PairRepository):
             return True
         return False
 
+    async def delete_user(self, user_id: int) -> bool:
+        """Rule 11: Nuclear option for blocked or dead accounts."""
+        await self.delete_all_pairs(user_id)
+        user = await self.get_user(user_id)
+        if user:
+            await self.session.delete(user)
+            await self.session.commit()
+            return True
+        return False
+
     async def get_setting(self, key: str, default: str = None) -> str | None:
         result = await self.session.execute(select(SystemSetting).where(SystemSetting.key == key))
         setting = result.scalar_one_or_none()

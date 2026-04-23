@@ -172,3 +172,56 @@ async def cb_uref(callback: types.CallbackQuery):
     await repost_service.sync_pair_stats(user_id, pair_id)
     callback.data = f"ustp_{user_id}_{pair_id}"
     await cb_ustp(callback)
+
+@router.callback_query(F.data.startswith("ureconn_"))
+async def cb_ureconn(callback: types.CallbackQuery):
+    if not await _check_admin(callback.from_user.id): return
+    user_id = int(callback.data.split("_")[1])
+    
+    async with async_session() as ds:
+        user = await UserRepository(ds).get_user(user_id)
+        if not user or not user.session_string:
+            return await safe_callback_answer(callback, "❌ No session string to reconnect.", show_alert=True)
+            
+    await safe_callback_answer(callback, "🔄 Revalidating session...")
+    is_valid, tid, uname = await repost_service.telethon.validate_session(user.session_string)
+    
+    async with async_session() as ds:
+        repo = UserRepository(ds)
+        db_user = await repo.get_user(user_id)
+        db_user.has_active_session = is_valid
+        await ds.commit()
+        
+    status = "✅ Session Valid" if is_valid else "❌ Session Invalid/Blocked"
+    await safe_callback_answer(callback, status, show_alert=True)
+    await _render_user_detail(callback.message, user_id)
+
+@router.callback_query(F.data.startswith("udconfirm_"))
+async def cb_udconfirm(callback: types.CallbackQuery):
+    if not await _check_admin(callback.from_user.id): return
+    user_id = int(callback.data.split("_")[1])
+    from app.bot.keyboards_admin import delete_user_confirm_kb
+    await callback.message.edit_text(
+        f"<b>⚠️ Nuclear Warning: User {user_id}</b>\n\n"
+        "Deleting this user will:\n"
+        "1. Wipe all their repost pairs\n"
+        "2. Stop all their active listeners\n"
+        "3. Remove them from the database\n\n"
+        "This is irreversible. Proceed?",
+        reply_markup=delete_user_confirm_kb(user_id),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("udel_"))
+async def cb_udel(callback: types.CallbackQuery):
+    if not await _check_admin(callback.from_user.id): return
+    user_id = int(callback.data.split("_")[1])
+    
+    if user_id == callback.from_user.id:
+        return await safe_callback_answer(callback, "❌ You cannot delete yourself.", show_alert=True)
+        
+    await safe_callback_answer(callback, "🧨 Executing cleanup...")
+    await repost_service.delete_user(user_id)
+    
+    await safe_callback_answer(callback, f"✅ User {user_id} and all their data removed.", show_alert=True)
+    await cb_admin_users(callback)

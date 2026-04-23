@@ -106,6 +106,19 @@ class RepostService:
         async with async_session() as ds:
             return await UserRepository(ds).delete_pair_by_id(user_id, pair_id)
 
+    async def delete_user(self, user_id: int) -> bool:
+        """Rule 11: Nuclear option for account cleanup."""
+        pairs = await self.get_user_pairs(user_id)
+        for p in pairs:
+            self._cancel_schedule_timer(p.id)
+            self._cancel_backfill_task(p.id)
+        
+        await self.telethon.stop_listener(user_id)
+        self._active_listeners.discard(user_id)
+        
+        async with async_session() as ds:
+            return await UserRepository(ds).delete_user(user_id)
+
     async def deactivate_all_pairs(self, user_id):
         async with async_session() as ds:
             repo = UserRepository(ds)
