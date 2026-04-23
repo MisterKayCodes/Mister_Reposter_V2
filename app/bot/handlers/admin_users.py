@@ -196,10 +196,10 @@ async def cb_ureconn(callback: types.CallbackQuery):
     await safe_callback_answer(callback, status, show_alert=True)
     await _render_user_detail(callback.message, user_id)
 
-@router.callback_query(F.data.startswith("udconfirm_"))
+@router.callback_query(F.data.startswith("uacc_confirm_"))
 async def cb_udconfirm(callback: types.CallbackQuery):
     if not await _check_admin(callback.from_user.id): return
-    user_id = int(callback.data.split("_")[1])
+    user_id = int(callback.data.split("_")[2])
     from app.bot.keyboards_admin import delete_user_confirm_kb
     await callback.message.edit_text(
         f"<b>⚠️ Nuclear Warning: User {user_id}</b>\n\n"
@@ -212,10 +212,10 @@ async def cb_udconfirm(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-@router.callback_query(F.data.startswith("udel_"))
+@router.callback_query(F.data.startswith("uacc_del_"))
 async def cb_udel(callback: types.CallbackQuery):
     if not await _check_admin(callback.from_user.id): return
-    user_id = int(callback.data.split("_")[1])
+    user_id = int(callback.data.split("_")[2])
     
     if user_id == callback.from_user.id:
         return await safe_callback_answer(callback, "❌ You cannot delete yourself.", show_alert=True)

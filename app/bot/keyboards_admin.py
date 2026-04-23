@@ -36,7 +36,7 @@ def user_detail_kb(user_id: int, target_is_admin: bool, target_is_premium: bool)
     builder.button(text=prem_label, callback_data=f"uprem_{user_id}")
     
     builder.button(text="🔄 Reconnect Session", callback_data=f"ureconn_{user_id}")
-    builder.button(text="🗑️ Delete User", callback_data=f"udconfirm_{user_id}")
+    builder.button(text="🗑️ Delete User", callback_data=f"uacc_confirm_{user_id}")
     builder.button(text="➕ Create Pair", callback_data=f"uaddpair_{user_id}")
     builder.button(text="📋 View Pairs", callback_data=f"upairs_{user_id}")
     builder.button(text="📊 View Stats", callback_data=f"ustat_{user_id}")
@@ -64,7 +64,7 @@ def admin_stats_detail_kb(user_id: int, pair_id: int):
 def delete_user_confirm_kb(user_id: int):
     """Safety check for user deletion."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="🧨 Yes, DELETE USER", callback_data=f"udel_{user_id}")
+    builder.button(text="🧨 Yes, DELETE USER", callback_data=f"uacc_del_{user_id}")
     builder.button(text="🔙 Cancel", callback_data=f"uview_{user_id}")
     builder.adjust(1)
     return builder.as_markup()
