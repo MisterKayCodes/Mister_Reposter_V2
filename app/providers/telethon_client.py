@@ -311,17 +311,34 @@ class TelethonProvider:
             return {"ok": False, "error": str(e)}
 
     async def _refresh_media_references(self, client, message):
+        """Rule 11: The Surgical Healing Protocol - gets fresh references from source."""
         try:
+            # 1. Determine the source peer reliably
+            sample = message[0] if isinstance(message, list) else message
+            peer = sample.peer_id
+            
+            # 2. Safety Check: If we don't have a peer, we can't refresh
+            if not peer: return None
+            
+            # 3. Fresh Fetch: Use get_entity_safe to ensure we can reach the source
+            try:
+                chat = await self._get_entity_safe(client, peer)
+            except Exception as e:
+                logger.warning(f"Surgical Healing: Could not resolve peer {peer} for refresh: {e}")
+                return None
+                
+            # 4. Pull fresh copies of the messages (and their file references)
             if isinstance(message, list):
-                chat = await client.get_entity(message[0].peer_id)
                 msg_ids = [m.id for m in message]
                 new_msgs = await client.get_messages(chat, ids=msg_ids)
+                # Map them back to the original list order
                 id_map = {m.id: m for m in new_msgs if m}
                 return [id_map.get(m.id) for m in message if id_map.get(m.id)]
             else:
-                chat = await client.get_entity(message.peer_id)
                 return await client.get_messages(chat, ids=message.id)
-        except Exception: return None
+        except Exception as e:
+            logger.error(f"Surgical Healing Failure: {e}")
+            return None
 
     async def _send_album(self, client, target, messages):
         media_list = []
