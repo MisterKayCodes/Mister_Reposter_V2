@@ -192,27 +192,39 @@ class RepostService:
         else: await self._execute_repost(user_id, [message])
 
     async def _execute_repost(self, user_id, messages):
-        cid = str(messages[0].chat_id)
-        norm_cid = cid if cid.startswith("-100") else f"-100{cid}"
+        # 1. Standardize Incoming ID
+        raw_cid = messages[0].chat_id
+        # Telegram IDs are integers. We'll use the absolute value of the short ID for matching.
+        norm_cid = abs(raw_cid)
+        if str(raw_cid).startswith("-100"):
+             norm_cid = int(str(raw_cid).replace("-100", ""))
+        
+        logger.debug(f"👂 [Instant] Triage: Heard msg from {raw_cid} (Normalized: {norm_cid})")
+        
         async with async_session() as ds:
             pairs = await UserRepository(ds).get_user_pairs(user_id)
             for p in pairs:
                 if not p.is_active or p.status == "error": continue
                 
-                src = str(p.source_id)
-                
-                # Rule 11: Dynamic Username Resolution for instant triggers
-                # If it's not a pure number (with optional '-'), it must be a username/link
-                if not src.replace("-", "").isdigit():
-                    res = await self.telethon.resolve_entity(user_id, src)
-                    if res and res.get("id"):
-                        resolved_id = str(res["id"])
-                        # Some resolved IDs might already include -100 depending on Telethon version
-                        src = resolved_id if resolved_id.startswith("-100") else f"-100{resolved_id}"
-                
-                if norm_cid == (src if src.startswith("-100") else f"-100{src}"):
+                # 2. Standardize Database Source ID
+                try:
+                    src_str = str(p.source_id).replace("-100", "").replace("-", "")
+                    if not src_str.isdigit():
+                        # If it's a username, check if it matches the current chat username
+                        if str(p.source_id).lower().strip("@") == getattr(messages[0].chat, 'username', '').lower():
+                            pass # Match found
+                        else:
+                            continue
+                    
+                    db_src_id = abs(int(src_str))
+                except Exception:
+                    continue
+
+                # 3. The "Perfect Match"
+                if norm_cid == db_src_id or str(p.source_id) == str(raw_cid):
+                    logger.info(f"✅ [Instant] Match Found! Pair #{p.id} (Source: {p.source_id})")
                     await self._process_matched_pair(p, user_id, messages)
-                    break
+                    # Note: We DON'T break here, in case one source feeds multiple destinations
 
     async def _process_matched_pair(self, p, user_id, messages):
         # 1. Triage Phase (Pre-check)
@@ -244,7 +256,8 @@ class RepostService:
 
         from app.core.repost.logic import MessageCleaner
         for msg in messages:
-            if msg.message: msg.message = MessageCleaner.clean(msg.message, mode=p.filter_type, replacement=p.replacement_link)
+            # We always clean, because Mode 3 needs to ADD text even if it's missing
+            msg.message = MessageCleaner.clean(msg.message or "", mode=p.filter_type, replacement=p.replacement_link)
 
         if p.schedule_interval and p.schedule_interval > 0:
             msg_ids = [m.id for m in messages]

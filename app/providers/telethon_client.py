@@ -350,8 +350,9 @@ class TelethonProvider:
 
     async def _send_single(self, client, target, message):
         file_id = getattr(message, "cached_file_id", None)
-        if file_id: return await client.send_file(target, file_id, caption=getattr(message, "message", ""))
-        return await client.send_message(target, message)
+        # Rule: Never 'Forward' if we want to change the caption.
+        # We pass the media and the (possibly cleaned) message text separately.
+        return await client.send_message(target, message.message, file=file_id or message.media)
 
     async def stop_listener(self, user_id: int):
         client = self.active_clients.pop(user_id, None)

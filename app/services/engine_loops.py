@@ -186,8 +186,8 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
         is_protected = True
 
     from app.core.repost.logic import MessageCleaner
-    if msg.message:
-        msg.message = MessageCleaner.clean(msg.message, mode=f_type, replacement=repl)
+    # We always clean, because Mode 3 needs to ADD text even if it's missing
+    msg.message = MessageCleaner.clean(msg.message or "", mode=f_type, replacement=repl)
         
     notifier = service._get_progress_notifier(user_id) if is_protected else None
     if notifier: await notifier("Backfill: Fetching protected media...")
@@ -259,10 +259,10 @@ async def flush_schedule_loop(service, pair_id, interval_minutes):
             logger.info(f"Schedule Triage: msg ids {item['msg_ids']} is PROTECTED. Auto-enabling bypass.")
             is_protected = True
 
-        # Re-apply cleaning (in case original was changed or we want absolute freshness)
+        # Re-apply cleaning (Mode 3 needs to ADD text even if it's missing)
         for m in fresh_msgs:
-            if m and m.message:
-                m.message = MessageCleaner.clean(m.message, mode=f_type, replacement=repl)
+            if m:
+                m.message = MessageCleaner.clean(m.message or "", mode=f_type, replacement=repl)
 
         # Send
         notifier = service._get_progress_notifier(item["user_id"]) if is_protected else None
