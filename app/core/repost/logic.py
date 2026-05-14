@@ -29,6 +29,10 @@ class MessageCleaner:
         if not text or mode == 0:
             return text
 
+        # Mode 3: Nuke & Replace (Rule 11: Total control)
+        if mode == 3:
+            return replacement if replacement else ""
+
         cleaned_text = text
         
         # Rule 3: Single Responsibility - Handle matching in one pass

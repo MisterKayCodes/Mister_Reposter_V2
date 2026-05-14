@@ -4,34 +4,30 @@ A "set-and-forget" Telegram bot that connects to your personal Telegram account 
 
 ---
 
-## Features
+## 🚀 Pro-Grade Features
 
-### Channel Reposting
-- Configure up to **4 repost pairs** (source -> destination)
-- Supports **public and private channels** (via invite links)
-- **Handles all media types**: text, photos, videos, documents, and dynamic albums
-- **Smart Album Grouping**: implements a sliding-window timeout (1.0s buffer) that waits dynamically for large media chunks to finish downloading so they are bundled as a perfect single album
-- **Intelligent content filters**: keep original links, optionally remove links (now intelligently ignoring `@usernames`), or replace specified `t.me` or `http` links with your custom tracker link
+### 🛡️ Surgical Resilience & Triage
+- **Surgical Healing Protocol**: Automatically detects and re-fetches expired Telegram `file_references`. The bot "heals" its own broken links by requesting fresh ones from the source channel silently.
+- **Message Triage Engine**: Every post is screened and classified (**Safe, Heavy, Protected, or Broken**) before processing. This ensures the engine never "clogs" on heavy files or corrupt data.
+- **Failed Media Lock (FML)**: Intelligent "Landmine" detection. If a post is unrecoverable (e.g., self-destructing media), the bot locks it instantly, preventing the queue from stalling.
+- **The "Circuit Breaker" Safety Valve**: Aggressively protects the asyncio event loop. If Telethon returns invalid responses, the engine throttles safely instead of spinning into a CPU-heavy crash.
 
-### Scheduling
-- **Instant mode**: messages are forwarded in real time as they arrive
-- **Scheduled mode**: batch messages at intervals from 5 minutes to 24 hours
-- **Start-from-message backfill**: for scheduled pairs, optionally fetch and forward historical messages from a specific message ID onward
+### 🔓 Advanced Content Handling
+- **Protected Content Bypass**: Automatically detects `noforward` (restricted) content and switches to **Surgical Transfer Mode** (Download -> Upload) to move restricted media that cannot be forwarded.
+- **Smart Album Grouping**: Uses a 1.0s sliding-window buffer to wait for large media chunks, ensuring multi-part posts are bundled as a perfect single album.
+- **file_id Caching**: Strictly maps and reuses Telegram `file_id` references for 7 days to save bandwidth and speed up delivery.
 
-### Reliability & Safety
-- **Error tracking**: each pair tracks consecutive errors; auto-disables after 5 failures
-- **Pair health status**: `Active`, `Paused`, or `Error` — visible in the dashboard
-- **FloodWait protection**: handles Telegram rate limits with automatic backoff and retry (up to 3 attempts)
-- **Duplicate detection**: in-memory tracker using message ID + media hash (LRU cache, 500 entries per pair) prevents double-posting
-- **Confirmation preview**: shows a full summary of source, destination, filter, schedule, and start message before activating a new pair
-- **Media cache**: stores message references for scheduled reposts with 24-hour eviction to prevent stale file references
-- **file_id caching**: strictly maps and reuses Telegram `file_id` references for 7 days to avoid repeatedly downloading/re-uploading identical media, saving immense bandwidth
-- **Backfill Guardians**: background daemon threads self-terminate gracefully if a pair is deleted or paused, to prevent zombie processes and API abuse limit bans
-- **Auto-recovery**: all active listeners resume automatically on bot restart
-- **Next Post Tracking**: Real-time stats dashboard displays exactly when the next scheduled post will fire, along with a 13-character preview of its content.
-- **The Safe-Start Reconnection Guard**: The "Eyes" (Telethon client) dynamically detect silent server disconnects and auto-reconnect, validating authorization before fetching to prevent "Zombie Sessions."
-- **The "Circuit Breaker" Safety Valve**: Aggressively protects the asyncio event loop. If Telethon returns empty/invalid responses due to network drops, backfill tasks safely throttle (60s) instead of violently spinning into a 100% CPU starvation loop.
-- **Queue Independence**: Live message listeners and historical backfills run perfectly concurrently. Backfills are no longer arbitrarily starved when live messages are waiting in the queue.
+### 🕒 Intelligent Scheduling & Backfill
+- **Instant vs. Scheduled**: Repost in real-time or batch messages at intervals (5m to 24h).
+- **Fresh-Fetch Backfill**: For scheduled pairs, the bot re-verifies the message still exists at the source seconds before delivery, ensuring no "Ghost Posts."
+- **Start-from-message Pointer**: Allows you to pick up exactly where you left off in a channel's history.
+
+### 📊 Administrative & Security Dashboard
+- **Routing Auditor**: Built-in test suite (`verify_routing.py`) that uses a "Sting Operation" to prevent callback data collisions and UI crashes.
+- **Dynamic Stats Dashboard**: Real-time progress tracking with "Lazy Healing" for channel names and estimated time-to-finish.
+- **User Lifecycle Control**: Admins can remotely reconnect sessions, grant/revoke premium status, and perform "Nuclear" user wipes.
+- **The Safe-Start Reconnection Guard**: Telethon clients dynamically detect silent disconnects and auto-reconnect, ensuring the "Eyes" of the bot stay open.
+- **Access Control**: Strict `ADMIN_IDS` gatekeeping for logs, user management, and global settings.
 
 ### Permissions
 - **Admin system**: `ADMIN_IDS` list in `config.py` controls privileged access
@@ -61,11 +57,11 @@ The project follows a **service-oriented architecture** with strict separation o
 | **The Nervous System** | `services/` | Orchestration layer connecting bot to database, Telethon, and cache |
 | **The Eyes** | `providers/` | Raw Telegram API communication via Telethon |
 | **The Brain** | `core/` | Pure functions for text processing and channel input resolution |
+| **The Surgical Ward** | `scripts/` | High-value resilience tools (Routing Auditor, Triage Verifier) |
 | **The Vault** | `data/` | Database models, engine setup, and repository pattern |
-| **The Skeleton** | `main.py` | Application entry point — initializes DB, recovers listeners, starts polling |
+| **The Skeleton** | `main.py` | Application entry point — initializes DB, heals schema, recovers listeners |
 | **The DNS / DNA** | `core/config.py` | Pydantic-validated environment configuration + admin IDs |
-| **Utilities** | `utils/` | Cross-cutting concerns (log buffer) |
-| **Documentation** | `docs/` | Technical journal (mister.md) and personal dev log (dev_log.md) |
+| **The Constitution** | `THE_CONSTITUTION.md`| The project's "Laws" for maintenance and future development |
 
 ---
 
@@ -106,21 +102,28 @@ Mister_ReposterV2/
 |   |-- sessions/               # Telethon .session files
 |   |-- reposter.db             # SQLite database (auto-created)
 |
-|-- utils/                      # Utilities
-|   |-- log_buffer.py           # Circular log buffer handler
+|-- scripts/                     # The Surgical Ward (High-Value Tools)
+|   |-- verify_routing.py        # The Sting Operation (Collision Auditor)
+|   |-- verify_triage.py         # Message classification tester
+|   |-- simulate_stats.py        # UI/UX simulation tool
 |
-|-- migrations/                 # Alembic migrations
-|   |-- versions/               # Migration scripts
+|-- tests/                       # Historical Diagnostics & Archive
+|   |-- db_migration_to_v2.py
+|   |-- stress_test_system_resilience.py
+|
+|-- ideas/                       # (Git-Ignored) Business Strategy Vault
+|   |-- reposter_business.md
+|   |-- general_life.md
+|
+|-- infrastructure/              # System Safeguards
+|   |-- checks/
+|   |   |-- guardian.py          # Real-time architectural enforcer
 |
 |-- docs/                       # Documentation
 |   |-- mister.md               # Technical progress journal
 |   |-- dev_log.md              # Personal reflective dev log
 |
-|-- config.py                   # Settings + ADMIN_IDS
-|-- main.py                     # Entry point
-|-- requirements.txt            # Python dependencies
-|-- alembic.ini                 # Alembic configuration
-|-- .env                        # Environment variables (not committed)
+|-- THE_CONSTITUTION.md          # Project "Laws" and Analogy Guide
 ```
 
 ---
