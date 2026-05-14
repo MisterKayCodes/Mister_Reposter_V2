@@ -66,7 +66,7 @@ async def process_filter_choice(callback: types.CallbackQuery, state: FSMContext
     filter_mode = int(callback.data.split("_")[1])
     await state.update_data(filter_type=filter_mode)
 
-    if filter_mode == 2:
+    if filter_mode in [2, 3]:
         await callback.message.edit_text("Create Pair (4/5)\n\nSend the replacement link/text:", reply_markup=cancel_kb())
         await state.set_state(CreatePair.waiting_for_replacement)
     else:
