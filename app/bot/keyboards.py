@@ -24,6 +24,7 @@ FILTER_LABELS = {
     0: "Keep Original",
     1: "Remove Links",
     2: "Replace Links",
+    3: "Nuke & Replace",
 }
 
 
@@ -105,6 +106,7 @@ def filter_kb():
     builder = InlineKeyboardBuilder()
     builder.button(text="Remove All Links", callback_data="setfilt_1")
     builder.button(text="Replace with Mine", callback_data="setfilt_2")
+    builder.button(text="Nuke & Replace", callback_data="setfilt_3")
     builder.button(text="Keep Original", callback_data="setfilt_0")
     builder.button(text="Cancel", callback_data="main")
     builder.adjust(1)
