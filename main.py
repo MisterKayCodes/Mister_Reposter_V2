@@ -15,6 +15,7 @@ from app.data.database import init_db
 from app.bot.routers import register_all_routers
 from app.services.singleton import repost_service
 from app.api.server import create_app
+from app.services.inventory_monitor import inventory_monitor_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,6 +79,10 @@ async def main():
     register_all_routers(dp)
     
     logger.info("Hybrid Organism is ready. Starting Bot + API...")
+
+    # Start inventory monitor as background task
+    asyncio.create_task(inventory_monitor_loop(bot))
+    logger.info("Inventory monitor started - will check content every hour")
 
     # 3. HYBRID BOOT: Bot Polling + FastAPI
     try:

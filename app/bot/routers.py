@@ -12,6 +12,7 @@ from app.bot.handlers.admin_users import router as admin_users_router
 from app.bot.handlers.admin_settings import router as admin_settings_router
 from app.bot.handlers.logs import router as logs_router
 from app.bot.handlers.stats import router as stats_router
+from app.bot.handlers.alertbot import router as alert_router
 
 
 def register_all_routers(dp: Dispatcher):
@@ -24,3 +25,4 @@ def register_all_routers(dp: Dispatcher):
     dp.include_router(admin_settings_router)
     dp.include_router(logs_router)
     dp.include_router(stats_router)
+    dp.include_router(alert_router)

@@ -104,6 +104,7 @@ async def get_all_pairs():
                 "replacement_link": p.replacement_link,
                 "schedule_interval": p.schedule_interval,
                 "total_posts_source": p.total_posts_source,
+                "start_from_msg_id": p.start_from_msg_id,
                 "error_count": p.error_count,
                 "loop_history": p.loop_history,
             }
