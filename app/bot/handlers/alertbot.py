@@ -31,6 +31,7 @@ def save_verified_users(users):
 
 @router.message(Command("alertbot"))
 async def cmd_alertbot(message: types.Message, state: FSMContext):
+    print(f"🔥 DEBUG: /alertbot command received from user {message.from_user.id}")
     user_id = message.from_user.id
     
     # Check if already verified
