@@ -66,7 +66,7 @@ class NetworkRetryMiddleware(BaseMiddleware):
 
 class SessionGuardMiddleware(BaseMiddleware):
     def __init__(self):
-        self.allowed_commands = ["/start", "alertbot"]
+        self.allowed_commands = ["/start", "/alertbot"]
 
     async def __call__(
         self,
