@@ -125,6 +125,7 @@ async def send_with_retry(service, user_id, destination, message, pair_id=None, 
                 asyncio.create_task(service._handle_pair_error(user_id, pair_id, result.get("detail", "Unknown fatal error")))
             return result
             
+        logger.error(f"❌ [Instant] Failed to post Pair #{pair_id}: {result.get('detail', result.get('error', 'Unknown Error'))}")
         return result
     return {"ok": False, "error": "max_retries", "error_type": "transient"}
 

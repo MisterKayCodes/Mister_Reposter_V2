@@ -313,9 +313,29 @@ class RepostService:
             # We always clean, because Mode 3 needs to ADD text even if it's missing
             msg.message = MessageCleaner.clean(msg.message or "", mode=p.filter_type, replacement=p.replacement_link)
 
+        # Resolve destination if it's an invite link
+        dest_val = str(p.destination_id)
+        if dest_val not in self._resolved_cache:
+            if "+" in dest_val or "joinchat" in dest_val:
+                import re as _re
+                hash_match = _re.search(r'[+/]([A-Za-z0-9_-]+)$', dest_val)
+                if hash_match:
+                    result = await self.telethon.join_channel(user_id, hash_match.group(1))
+                    if result and result.get("id"):
+                        self._resolved_cache[dest_val] = abs(int(str(result["id"]).replace("-100", "")))
+                        logger.info(f"✅ [Instant] Destination Invite resolved {dest_val} -> {self._resolved_cache[dest_val]}")
+                    else:
+                        self._resolved_cache[dest_val] = dest_val
+                else:
+                    self._resolved_cache[dest_val] = dest_val
+            else:
+                self._resolved_cache[dest_val] = dest_val
+                
+        actual_dest = self._resolved_cache.get(dest_val, dest_val)
+
         if p.schedule_interval and p.schedule_interval > 0:
             msg_ids = [m.id for m in messages]
-            self._enqueue_scheduled(p.id, user_id, p.source_id, p.destination_id, msg_ids, p.schedule_interval)
+            self._enqueue_scheduled(p.id, user_id, p.source_id, actual_dest, msg_ids, p.schedule_interval)
             
             # UI: Show the timer immediately
             self.next_post_info[p.id] = {
@@ -325,7 +345,7 @@ class RepostService:
         notifier = self._get_progress_notifier(user_id) if is_protected else None
         if notifier: await notifier("Detecting protected content. Starting surgical bypass...")
         
-        await self._send_with_retry(user_id, p.destination_id, messages, pair_id=p.id, is_protected=is_protected, progress_callback=notifier)
+        await self._send_with_retry(user_id, actual_dest, messages, pair_id=p.id, is_protected=is_protected, progress_callback=notifier)
 
     def _enqueue_scheduled(self, pid, uid, source, dest, msg_ids, interval):
         if pid not in self.schedule_queue: self.schedule_queue[pid] = []
