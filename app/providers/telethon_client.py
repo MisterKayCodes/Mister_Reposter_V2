@@ -73,7 +73,7 @@ class TelethonProvider:
                     if not await client.is_user_authorized():
                         logger.warning(f"User {user_id} unauthorized.")
                         await client.disconnect()
-                        return
+                        raise PermissionError(f"Session for User {user_id} is unauthorized.")
                     break
                 except (OSError, asyncio.TimeoutError) as e:
                     if attempt == 1: raise e
@@ -96,6 +96,7 @@ class TelethonProvider:
         except Exception as e:
             logger.error(f"Failed to open Eyes for User {user_id}: {e}")
             self.active_clients.pop(user_id, None)
+            raise  # Re-raise so callers (autonomic) can detect fatal errors
 
     async def join_channel(self, user_id: int, invite_hash: str) -> dict | None:
         client = self.active_clients.get(user_id)
