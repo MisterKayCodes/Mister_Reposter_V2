@@ -30,6 +30,7 @@ class RepostService:
         self.next_post_info, self.last_errors = {}, {}
         self._dedup_seen = {}
         self.failed_media_lock = {} # Rule 11: Failed Media Lock (Pair ID -> Set of Msg IDs)
+        self._resolved_cache = {}
         self.heartbeat = HeartbeatMonitor(self)
 
     def set_bot(self, bot): self._bot = bot
@@ -213,7 +214,28 @@ class RepostService:
                 try:
                     src_str = str(p.source_id).replace("-100", "").replace("-", "")
                     if not src_str.isdigit():
-                        # If it's a username, check if it matches the current chat username
+                        # Check resolution cache first
+                        if p.source_id not in self._resolved_cache:
+                            logger.info(f"🔄 [Instant] Warming up cache for string source: {p.source_id}")
+                            try:
+                                entity_info = await self.telethon.resolve_entity(user_id, str(p.source_id))
+                                if entity_info and entity_info.get("id"):
+                                    self._resolved_cache[p.source_id] = abs(int(str(entity_info["id"]).replace("-100", "")))
+                                    logger.info(f"✅ [Instant] Cached {p.source_id} -> {self._resolved_cache[p.source_id]}")
+                                else:
+                                    self._resolved_cache[p.source_id] = -1
+                                    logger.warning(f"⚠️ [Instant] Could not resolve {p.source_id}")
+                            except Exception as e:
+                                self._resolved_cache[p.source_id] = -1
+                                logger.error(f"❌ [Instant] Cache warmup failed for {p.source_id}: {e}")
+
+                        resolved_db_id = self._resolved_cache.get(p.source_id)
+                        if resolved_db_id and resolved_db_id != -1 and resolved_db_id == norm_cid:
+                            logger.info(f"🚀 [Instant] Cached Resolve Match Found! Routing to Destination! Pair #{p.id}")
+                            await self._process_matched_pair(p, user_id, messages)
+                            continue
+
+                        # Fallback to string username match
                         db_username = str(p.source_id).lower().strip("@")
                         msg_username = str(incoming_username).lower()
                         logger.info(f"🔍 [Instant] Checking Username match for Pair #{p.id}: DB='{db_username}' vs Incoming='{msg_username}'")
