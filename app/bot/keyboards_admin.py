@@ -21,6 +21,7 @@ def admin_users_kb(users):
         label = f"{prefix}{u.id}"
         if u.username: label += f" (@{u.username})"
         builder.button(text=label, callback_data=f"uview_{u.id}")
+    builder.button(text="🧹 Purge Invalid", callback_data="upurge_bad")
     builder.button(text="🔙 Back", callback_data="main")
     builder.adjust(1)
     return builder.as_markup()

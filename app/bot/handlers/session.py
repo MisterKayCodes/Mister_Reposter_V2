@@ -145,3 +145,34 @@ async def cb_get_session(callback: types.CallbackQuery):
             f"⚠️ <i>Keep this private. Anyone with this string can access your account.</i>",
             parse_mode="HTML"
         )
+
+
+@router.callback_query(F.data == "logout")
+async def cb_logout(callback: types.CallbackQuery):
+    """Allow any user (including admin) to drop their session string."""
+    from app.data.database import async_session as db_session
+    from app.data.repository import UserRepository
+    from app.bot.handlers.utils import render_main_menu, render_client_dashboard
+
+    user_id = callback.from_user.id
+    
+    # Stop Telethon listener first
+    await repost_service.telethon.stop_listener(user_id)
+    repost_service._active_listeners.discard(user_id)
+
+    # Wipe session from DB
+    async with db_session() as ds:
+        repo = UserRepository(ds)
+        user = await repo.get_user(user_id)
+        if user:
+            user.session_string = None
+            user.has_active_session = False
+            await ds.commit()
+
+    await callback.answer("🔌 Session Disconnected!")
+    
+    # Re-render menu
+    if await repost_service.is_admin(user_id):
+        await render_main_menu(callback.message, user_id=user_id)
+    else:
+        await render_client_dashboard(callback.message, user_id=user_id)

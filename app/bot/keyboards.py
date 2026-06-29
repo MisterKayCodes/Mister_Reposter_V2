@@ -37,6 +37,7 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     builder.button(text="📊 Stats", callback_data="stats")
     if has_session:
         builder.button(text="🔑 Get Session", callback_data="get_session")
+        builder.button(text="🔌 Logout", callback_data="logout")
     if is_admin:
         builder.button(text="📜 Logs", callback_data="logs")
         builder.button(text="👤 Manage Users", callback_data="admin_users")
@@ -45,13 +46,13 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     
     # Adjust layout based on role and session
     if not has_session and is_admin:
-        builder.adjust(1, 2, 2, 1)
+        builder.adjust(1, 2, 1, 2, 1, 1)
     elif not has_session:
-        builder.adjust(1, 2, 1)
+        builder.adjust(1, 2, 1, 1)
     elif is_admin:
-        builder.adjust(2, 2, 2, 2, 1)
+        builder.adjust(2, 1, 2, 2, 1, 1)
     else:
-        builder.adjust(2, 2, 1)
+        builder.adjust(2, 1, 2, 1)
     return builder.as_markup()
 
 

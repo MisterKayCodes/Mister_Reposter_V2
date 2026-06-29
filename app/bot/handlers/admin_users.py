@@ -225,3 +225,25 @@ async def cb_udel(callback: types.CallbackQuery):
     
     await safe_callback_answer(callback, f"✅ User {user_id} and all their data removed.", show_alert=True)
     await cb_admin_users(callback)
+
+@router.callback_query(F.data == "upurge_bad")
+async def cb_upurge_bad(callback: types.CallbackQuery):
+    if not await _check_admin(callback.from_user.id): return
+    
+    await safe_callback_answer(callback, "🧹 Purging invalid sessions...")
+    
+    async with async_session() as ds:
+        repo = UserRepository(ds)
+        users = await repo.get_all_users()
+        
+        purged_count = 0
+        for u in users:
+            if not u.has_active_session and u.session_string:
+                u.session_string = None
+                purged_count += 1
+        
+        if purged_count > 0:
+            await ds.commit()
+            
+    await safe_callback_answer(callback, f"✅ Purged {purged_count} bad sessions!", show_alert=True)
+    await cb_admin_users(callback)
