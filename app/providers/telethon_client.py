@@ -216,15 +216,27 @@ class TelethonProvider:
             if is_protected:
                 return await self._download_and_upload(client, target, message, progress_callback=progress_callback)
 
-            if isinstance(message, list): sent = await self._send_album(client, target, message)
-            else: sent = await self._send_single(client, target, message)
+            if isinstance(message, list):
+                if len(message) == 1:
+                    message = message[0]
+                    sent = await self._send_single(client, target, message)
+                else:
+                    sent = await self._send_album(client, target, message)
+            else:
+                sent = await self._send_single(client, target, message)
             return {"ok": True, "message": sent}
         except (FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError) as e:
             refreshed_msg = await self._refresh_media_references(client, message)
             if refreshed_msg:
                 try:
-                    if isinstance(refreshed_msg, list): sent = await self._send_album(client, target, refreshed_msg)
-                    else: sent = await self._send_single(client, target, refreshed_msg)
+                    if isinstance(refreshed_msg, list):
+                        if len(refreshed_msg) == 1:
+                            refreshed_msg = refreshed_msg[0]
+                            sent = await self._send_single(client, target, refreshed_msg)
+                        else:
+                            sent = await self._send_album(client, target, refreshed_msg)
+                    else:
+                        sent = await self._send_single(client, target, refreshed_msg)
                     return {"ok": True, "message": sent}
                 except Exception as e2:
                     return {"ok": False, "error": "retry_failed", "error_type": "fatal" if isinstance(e2, (PeerIdInvalidError, rpcbaseerrors.ForbiddenError)) else "retryable", "detail": str(e2)}
