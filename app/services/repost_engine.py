@@ -207,21 +207,23 @@ class RepostService:
                 if not p.is_active or p.status == "error": continue
                 
                 # 2. Standardize Database Source ID
+                db_src_id = None
+                is_username_match = False
                 try:
                     src_str = str(p.source_id).replace("-100", "").replace("-", "")
                     if not src_str.isdigit():
                         # If it's a username, check if it matches the current chat username
                         if str(p.source_id).lower().strip("@") == getattr(messages[0].chat, 'username', '').lower():
-                            pass # Match found
+                            is_username_match = True
                         else:
                             continue
-                    
-                    db_src_id = abs(int(src_str))
+                    else:
+                        db_src_id = abs(int(src_str))
                 except Exception:
                     continue
 
                 # 3. The "Perfect Match"
-                if norm_cid == db_src_id or str(p.source_id) == str(raw_cid):
+                if is_username_match or (db_src_id is not None and norm_cid == db_src_id) or str(p.source_id) == str(raw_cid):
                     logger.info(f"✅ [Instant] Match Found! Pair #{p.id} (Source: {p.source_id})")
                     await self._process_matched_pair(p, user_id, messages)
                     # Note: We DON'T break here, in case one source feeds multiple destinations
