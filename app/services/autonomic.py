@@ -77,7 +77,6 @@ class HeartbeatMonitor:
         
         try:
             # Phase 1: Verify Authorization & Reconnect
-            from telethon.sessions import StringSession
             async with async_session() as ds:
                 user = await UserRepository(ds).get_user(uid)
                 if not user or not user.session_string: return
@@ -86,29 +85,64 @@ class HeartbeatMonitor:
             client = self.service.telethon.active_clients.get(uid)
             if not client or not client.is_connected():
                 logger.info(f"Phase 1: Session for User {uid} disconnected. Resolving...")
-                await self.service.telethon.start_listener(uid, user.session_string, self.service._handle_new_message)
+                try:
+                    await self.service.telethon.start_listener(uid, user.session_string, self.service._handle_new_message)
+                except Exception as start_err:
+                    err_str = str(start_err).lower()
+                    if "two different ip" in err_str or "authorization key" in err_str or "unauthorized" in err_str:
+                        await self._invalidate_dead_session(uid)
+                        return
             else:
                 is_auth = await client.is_user_authorized()
                 if not is_auth:
-                    logger.critical(f"Phase 1: User {uid} session authorized=False.")
+                    logger.critical(f"Phase 1: User {uid} session authorized=False. Auto-invalidating.")
+                    await self._invalidate_dead_session(uid)
                     return
 
             # Phase 2: Jumpstart via Force Repost
             logger.info(f"Phase 2: Jumpstarting Pair #{pid}...")
-            # We use force_repost_once to bridge the gap and trigger a new loop
             success = await self.service.force_repost_once(uid, pid)
             
             if success:
                 logger.info(f"Phase 3: Pair #{pid} Jumpstarted successfully.")
                 async with async_session() as ds:
                     await UserRepository(ds).increment_consecutive_heals(pid)
-                
                 await self.service._notify_user(uid, f"🛡 <b>Heartbeat Restored</b>\nYour Pair #{pid} experienced a silent stall. The Immune System has automatically performed a surgical jumpstart.")
             else:
                 logger.error(f"Phase 3: Jumpstart failed for Pair #{pid}.")
         
         except Exception as e:
-            logger.error(f"Surgical Healing Exception for Pair #{pid}: {e}")
+            err_str = str(e).lower()
+            if "two different ip" in err_str or "authorization key" in err_str:
+                await self._invalidate_dead_session(uid)
+            else:
+                logger.error(f"Surgical Healing Exception for Pair #{pid}: {e}")
+
+    async def _invalidate_dead_session(self, uid: int):
+        """Auto-wipes a session that Telegram has permanently killed."""
+        logger.critical(f"💀 Auto-Invalidating dead session for User {uid}.")
+        try:
+            # Stop the broken listener
+            await self.service.telethon.stop_listener(uid)
+            self.service._active_listeners.discard(uid)
+            
+            # Wipe session from DB
+            async with async_session() as ds:
+                repo = UserRepository(ds)
+                user = await repo.get_user(uid)
+                if user:
+                    user.session_string = None
+                    user.has_active_session = False
+                    await ds.commit()
+            
+            logger.warning(f"Session for User {uid} has been automatically cleared. User must re-upload.")
+            await self.service._notify_user(uid, 
+                f"⚠️ <b>Session Expired!</b>\n\n"
+                f"Your Telegram session was revoked (possibly due to logging in from a different device or location).\n\n"
+                f"Please tap <b>☁️ Upload Session</b> in the main menu to reconnect."
+            )
+        except Exception as e:
+            logger.error(f"Failed to auto-invalidate session for User {uid}: {e}")
 
     def stop(self):
         self.is_running = False

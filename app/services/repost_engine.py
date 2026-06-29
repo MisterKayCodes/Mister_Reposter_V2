@@ -218,13 +218,30 @@ class RepostService:
                         if p.source_id not in self._resolved_cache:
                             logger.info(f"🔄 [Instant] Warming up cache for string source: {p.source_id}")
                             try:
-                                entity_info = await self.telethon.resolve_entity(user_id, str(p.source_id))
-                                if entity_info and entity_info.get("id"):
-                                    self._resolved_cache[p.source_id] = abs(int(str(entity_info["id"]).replace("-100", "")))
-                                    logger.info(f"✅ [Instant] Cached {p.source_id} -> {self._resolved_cache[p.source_id]}")
+                                src_val = str(p.source_id)
+                                # Private invite links (t.me/+hash) can't be resolved directly
+                                # Use join_channel which handles the CheckChatInviteRequest fallback
+                                if "+" in src_val or "joinchat" in src_val:
+                                    import re as _re
+                                    hash_match = _re.search(r'[+/]([A-Za-z0-9_-]+)$', src_val)
+                                    if hash_match:
+                                        invite_hash = hash_match.group(1)
+                                        result = await self.telethon.join_channel(user_id, invite_hash)
+                                        if result and result.get("id"):
+                                            self._resolved_cache[p.source_id] = abs(int(str(result["id"]).replace("-100", "")))
+                                            logger.info(f"✅ [Instant] Invite resolved {p.source_id} -> {self._resolved_cache[p.source_id]}")
+                                        else:
+                                            self._resolved_cache[p.source_id] = -1
+                                    else:
+                                        self._resolved_cache[p.source_id] = -1
                                 else:
-                                    self._resolved_cache[p.source_id] = -1
-                                    logger.warning(f"⚠️ [Instant] Could not resolve {p.source_id}")
+                                    entity_info = await self.telethon.resolve_entity(user_id, src_val)
+                                    if entity_info and entity_info.get("id"):
+                                        self._resolved_cache[p.source_id] = abs(int(str(entity_info["id"]).replace("-100", "")))
+                                        logger.info(f"✅ [Instant] Cached {p.source_id} -> {self._resolved_cache[p.source_id]}")
+                                    else:
+                                        self._resolved_cache[p.source_id] = -1
+                                        logger.warning(f"⚠️ [Instant] Could not resolve {p.source_id}")
                             except Exception as e:
                                 self._resolved_cache[p.source_id] = -1
                                 logger.error(f"❌ [Instant] Cache warmup failed for {p.source_id}: {e}")
@@ -236,7 +253,7 @@ class RepostService:
                             continue
 
                         # Fallback to string username match
-                        db_username = str(p.source_id).lower().strip("@")
+                        db_username = str(p.source_id).lower().strip("@").split("/")[-1]
                         msg_username = str(incoming_username).lower()
                         logger.info(f"🔍 [Instant] Checking Username match for Pair #{p.id}: DB='{db_username}' vs Incoming='{msg_username}'")
                         if db_username == msg_username and db_username != "":
