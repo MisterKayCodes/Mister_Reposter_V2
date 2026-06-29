@@ -74,7 +74,11 @@ async def process_session_input(message: types.Message, state: FSMContext):
             
     elif message.text:
         await message.answer("Processing session string... please wait.")
-        success = await session_service.validate_and_save_string(user_id, message.text.strip())
+        try:
+            success = await session_service.validate_and_save_string(user_id, message.text.strip())
+        except Exception as e:
+            logger.error(f"Session string validation failed: {e}")
+            success = False
 
     await state.clear()
     if success:
