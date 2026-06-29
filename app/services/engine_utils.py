@@ -93,7 +93,7 @@ async def send_with_retry(service, user_id, destination, message, pair_id=None, 
             if cached_id: m.cached_file_id = cached_id
 
     for attempt in range(4): # FLOOD_WAIT_MAX_RETRY + 1
-        result = await service.telethon.send_message(user_id, destination, message, is_protected=is_protected, progress_callback=progress_callback)
+        result = await service.telethon.send_message(user_id, destination, message, pair_id=pair_id, is_protected=is_protected, progress_callback=progress_callback)
         if result["ok"]:
             if pair_id:
                 async with async_session() as ds:
