@@ -199,7 +199,8 @@ class RepostService:
         if str(raw_cid).startswith("-100"):
              norm_cid = int(str(raw_cid).replace("-100", ""))
         
-        logger.debug(f"👂 [Instant] Triage: Heard msg from {raw_cid} (Normalized: {norm_cid})")
+        incoming_username = getattr(messages[0].chat, 'username', '')
+        logger.info(f"👂 [Instant] Triage: Heard msg from {raw_cid} (Normalized: {norm_cid}, Username: @{incoming_username})")
         
         async with async_session() as ds:
             pairs = await UserRepository(ds).get_user_pairs(user_id)
@@ -213,18 +214,24 @@ class RepostService:
                     src_str = str(p.source_id).replace("-100", "").replace("-", "")
                     if not src_str.isdigit():
                         # If it's a username, check if it matches the current chat username
-                        if str(p.source_id).lower().strip("@") == getattr(messages[0].chat, 'username', '').lower():
+                        db_username = str(p.source_id).lower().strip("@")
+                        msg_username = str(incoming_username).lower()
+                        logger.info(f"🔍 [Instant] Checking Username match for Pair #{p.id}: DB='{db_username}' vs Incoming='{msg_username}'")
+                        if db_username == msg_username and db_username != "":
                             is_username_match = True
+                            logger.info(f"✅ [Instant] Username Match True!")
                         else:
                             continue
                     else:
                         db_src_id = abs(int(src_str))
-                except Exception:
+                        logger.info(f"🔍 [Instant] Checking Numeric ID match for Pair #{p.id}: DB={db_src_id} vs Incoming={norm_cid}")
+                except Exception as e:
+                    logger.error(f"❌ [Instant] Error parsing source ID for Pair #{p.id}: {e}")
                     continue
 
                 # 3. The "Perfect Match"
                 if is_username_match or (db_src_id is not None and norm_cid == db_src_id) or str(p.source_id) == str(raw_cid):
-                    logger.info(f"✅ [Instant] Match Found! Pair #{p.id} (Source: {p.source_id})")
+                    logger.info(f"🚀 [Instant] Perfect Match Found! Routing to Destination! Pair #{p.id} (Source: {p.source_id})")
                     await self._process_matched_pair(p, user_id, messages)
                     # Note: We DON'T break here, in case one source feeds multiple destinations
 
