@@ -141,9 +141,12 @@ class RepostService:
             repo = UserRepository(ds)
             if await repo.activate_pair(user_id, pair_id):
                 user = await repo.get_user(user_id)
-                if user_id not in self._active_listeners and user.session_string:
-                    await self.telethon.start_listener(user_id, user.session_string, self._handle_new_message)
-                    self._active_listeners.add(user_id)
+                if user_id not in self._active_listeners:
+                    try:
+                        await self.telethon.start_listener(user_id, user.session_string, self._handle_new_message)
+                        self._active_listeners.add(user_id)
+                    except Exception as e:
+                        logger.error(f"Failed to start listener for {user_id}: {e}")
                 return True
         return False
 
@@ -152,9 +155,12 @@ class RepostService:
             repo = UserRepository(ds)
             new_p = await repo.add_repost_pair(user_id, source, destination, **kwargs)
             user = await repo.get_user(user_id)
-            if user_id not in self._active_listeners and user.session_string:
-                await self.telethon.start_listener(user_id, user.session_string, self._handle_new_message)
-                self._active_listeners.add(user_id)
+            if user_id not in self._active_listeners:
+                try:
+                    await self.telethon.start_listener(user_id, user.session_string, self._handle_new_message)
+                    self._active_listeners.add(user_id)
+                except Exception as e:
+                    logger.error(f"Failed to start listener for {user_id}: {e}")
         
         if kwargs.get('start_from_msg_id') and kwargs.get('schedule_interval', 0) > 0:
             task = asyncio.create_task(run_backfill(self, user_id, source, destination, kwargs['start_from_msg_id'], kwargs.get('filter_type', 1), kwargs.get('replacement_link'), kwargs['schedule_interval'], new_p.id))
@@ -348,8 +354,11 @@ class RepostService:
             for uid in uids:
                 user = await repo.get_user(uid)
                 if uid not in self._active_listeners and user.session_string:
-                    await self.telethon.start_listener(uid, user.session_string, self._handle_new_message)
-                    self._active_listeners.add(uid)
+                    try:
+                        await self.telethon.start_listener(uid, user.session_string, self._handle_new_message)
+                        self._active_listeners.add(uid)
+                    except Exception as e:
+                        logger.error(f"Startup: Failed to start listener for {uid}: {e}")
                 pairs = await repo.get_user_pairs(uid)
                 for p in pairs:
                     if p.is_active and p.status != "error" and p.start_from_msg_id and p.schedule_interval:
