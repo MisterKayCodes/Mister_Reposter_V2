@@ -149,7 +149,28 @@ class RepostService:
                     except Exception as e:
                         logger.error(f"Failed to start listener for {user_id}: {e}")
                 return True
-        return False
+    async def resolve_channel_id(self, user_id: int, identifier: str) -> str | None:
+        """Resolves a channel link/username to a normalized numeric Telegram channel ID string."""
+        if not identifier:
+            return None
+        # If already numeric ID (e.g. -100... or raw digits)
+        clean = str(identifier).replace("-100", "").replace("-", "")
+        if clean.isdigit():
+            return f"-100{clean}" if not str(identifier).startswith("-100") else str(identifier)
+
+        logger.info(f"🔍 [Resolver] Attempting upfront entity resolution for '{identifier}' (User {user_id})...")
+        try:
+            res = await self.telethon.resolve_entity(user_id, identifier)
+            if res and res.get("id"):
+                raw_id = res["id"]
+                norm_id = f"-100{abs(raw_id)}" if not str(raw_id).startswith("-100") else str(raw_id)
+                logger.info(f"✅ [Resolver] Successfully resolved '{identifier}' -> {norm_id} (Title: '{res.get('title')}')")
+                return norm_id
+            logger.warning(f"⚠️ [Resolver] Unable to resolve entity for '{identifier}'")
+            return None
+        except Exception as e:
+            logger.error(f"❌ [Resolver] Resolution error for '{identifier}': {e}")
+            return None
 
     async def add_new_pair(self, user_id, source, destination, **kwargs):
         async with async_session() as ds:

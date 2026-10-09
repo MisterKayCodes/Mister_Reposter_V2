@@ -203,8 +203,8 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
             dest_display = p.destination_display or p.destination_id
             
             # Formatting for IDs to be more readable
-            src_str = f"@{src_display}" if isinstance(src_display, str) and not src_display.startswith("-") and not src_display.isdigit() else src_display
-            dest_str = f"@{dest_display}" if isinstance(dest_display, str) and not dest_display.startswith("-") and not dest_display.isdigit() else dest_display
+            src_str = f"@{src_display}" if isinstance(src_display, str) and not src_display.startswith("-") and not src_display.startswith("@") and not src_display.isdigit() else src_display
+            dest_str = f"@{dest_display}" if isinstance(dest_display, str) and not dest_display.startswith("-") and not dest_display.startswith("@") and not dest_display.isdigit() else dest_display
             
             lines.append(f"<code>{src_str}</code> ➔ <code>{dest_str}</code>")
             

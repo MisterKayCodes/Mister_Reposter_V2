@@ -48,8 +48,32 @@ async def process_source(message: types.Message, state: FSMContext):
     resolved = await handle_channel_input(message, state, "source")
     if not resolved: return
 
-    display = resolved["identifier"] if resolved["kind"] != "invite" else f"Private ({resolved['invite_hash'][:8]}...)"
-    await message.answer(f"Source: {display}\n\nCreate Pair (2/5)\n\nSend the destination channel.", reply_markup=cancel_kb())
+    data = await state.get_data()
+    target_id = data.get("target_user_id", message.from_user.id)
+    raw_id = resolved["identifier"]
+
+    # Upfront resolution check
+    status_msg = await message.answer(f"🔍 Resolving <code>{resolved['display_name']}</code>...", parse_mode="HTML")
+    numeric_id = await repost_service.resolve_channel_id(target_id, raw_id)
+    
+    if numeric_id:
+        await state.update_data(source_id=numeric_id)
+        await status_msg.edit_text(
+            f"✅ <b>Source Resolved:</b> {resolved['display_name']} (<code>{numeric_id}</code>)\n\n"
+            f"<b>Create Pair (2/5)</b>\n\nSend the destination channel (Link, @Username, or Forward a message).",
+            reply_markup=cancel_kb(),
+            parse_mode="HTML"
+        )
+    else:
+        # Fallback: retain raw identifier if resolution was not possible immediately, but notify user
+        await status_msg.edit_text(
+            f"⚠️ <b>Source Saved:</b> {resolved['display_name']}\n"
+            f"<i>(Note: Channel couldn't be resolved to numeric ID upfront. Auto-healer will attempt resolution in background.)</i>\n\n"
+            f"<b>Create Pair (2/5)</b>\n\nSend the destination channel.",
+            reply_markup=cancel_kb(),
+            parse_mode="HTML"
+        )
+
     await state.set_state(CreatePair.waiting_for_destination)
 
 @router.message(CreatePair.waiting_for_destination)
@@ -57,7 +81,28 @@ async def process_destination(message: types.Message, state: FSMContext):
     resolved = await handle_channel_input(message, state, "destination")
     if not resolved: return
 
-    await message.answer("Create Pair (3/5)\n\nChoose a filter mode:", reply_markup=filter_kb())
+    data = await state.get_data()
+    target_id = data.get("target_user_id", message.from_user.id)
+    raw_id = resolved["identifier"]
+
+    status_msg = await message.answer(f"🔍 Resolving <code>{resolved['display_name']}</code>...", parse_mode="HTML")
+    numeric_id = await repost_service.resolve_channel_id(target_id, raw_id)
+
+    if numeric_id:
+        await state.update_data(destination_id=numeric_id)
+        await status_msg.edit_text(
+            f"✅ <b>Destination Resolved:</b> {resolved['display_name']} (<code>{numeric_id}</code>)\n\n"
+            f"<b>Create Pair (3/5)</b>\n\nChoose a filter mode:",
+            reply_markup=filter_kb(),
+            parse_mode="HTML"
+        )
+    else:
+        await status_msg.edit_text(
+            f"<b>Create Pair (3/5)</b>\n\nChoose a filter mode:",
+            reply_markup=filter_kb(),
+            parse_mode="HTML"
+        )
+
     await state.set_state(CreatePair.waiting_for_filter)
 
 @router.callback_query(F.data.startswith("setfilt_"), CreatePair.waiting_for_filter)

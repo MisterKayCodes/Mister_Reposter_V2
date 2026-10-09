@@ -1,299 +1,561 @@
 # Mister Reposter V2
 
-A "set-and-forget" Telegram bot that connects to your personal Telegram account (via Telethon) and automatically copies messages from one channel to another. Fully inline-button-driven interface — the only slash command is `/start`.
+**A Telegram Reposting Bot with Self-Healing Architecture**
+
+![Version](https://img.shields.io/badge/version-2.0-blue)
+![Python](https://img.shields.io/badge/python-3.11+-green)
+![License](https://img.shields.io/badge/license-MIT-orange)
 
 ---
 
-## 🚀 Pro-Grade Features
+## 📖 Overview
 
-### 🛡️ Surgical Resilience & Triage
-- **Surgical Healing Protocol**: Automatically detects and re-fetches expired Telegram `file_references`. The bot "heals" its own broken links by requesting fresh ones from the source channel silently.
-- **Message Triage Engine**: Every post is screened and classified (**Safe, Heavy, Protected, or Broken**) before processing. This ensures the engine never "clogs" on heavy files or corrupt data.
-- **Failed Media Lock (FML)**: Intelligent "Landmine" detection. If a post is unrecoverable (e.g., self-destructing media), the bot locks it instantly, preventing the queue from stalling.
-- **The "Circuit Breaker" Safety Valve**: Aggressively protects the asyncio event loop. If Telethon returns invalid responses, the engine throttles safely instead of spinning into a CPU-heavy crash.
+Mister Reposter V2 is a sophisticated Telegram bot that automatically reposts messages from source channels to destination channels. Built on an **Organism Model** architecture, it features filtering, scheduling, media handling, and self-healing capabilities that keep your reposting operations running smoothly.
 
-### 🔓 Advanced Content Handling
-- **Protected Content Bypass**: Automatically detects `noforward` (restricted) content and switches to **Surgical Transfer Mode** (Download -> Upload) to move restricted media that cannot be forwarded.
-- **Smart Album Grouping**: Uses a 1.0s sliding-window buffer to wait for large media chunks, ensuring multi-part posts are bundled as a perfect single album.
-- **file_id Caching**: Strictly maps and reuses Telegram `file_id` references for 7 days to save bandwidth and speed up delivery.
+### Key Features
 
-### 🕒 Intelligent Scheduling & Backfill
-- **Instant vs. Scheduled**: Repost in real-time or batch messages at intervals (5m to 24h).
-- **Fresh-Fetch Backfill**: For scheduled pairs, the bot re-verifies the message still exists at the source seconds before delivery, ensuring no "Ghost Posts."
-- **Start-from-message Pointer**: Allows you to pick up exactly where you left off in a channel's history.
-
-### 📊 Administrative & Security Dashboard
-- **Routing Auditor**: Built-in test suite (`verify_routing.py`) that uses a "Sting Operation" to prevent callback data collisions and UI crashes.
-- **Dynamic Stats Dashboard**: Real-time progress tracking with "Lazy Healing" for channel names and estimated time-to-finish.
-- **User Lifecycle Control**: Admins can remotely reconnect sessions, grant/revoke premium status, and perform "Nuclear" user wipes.
-- **The Safe-Start Reconnection Guard**: Telethon clients dynamically detect silent disconnects and auto-reconnect, ensuring the "Eyes" of the bot stay open.
-- **Access Control**: Strict `ADMIN_IDS` gatekeeping for logs, user management, and global settings.
-
-### Permissions
-- **Admin system**: `ADMIN_IDS` list in `config.py` controls privileged access
-- **Logs**: only admin users can view application logs; the Logs button is hidden for non-admins
-
-### User Interface
-- Fully **callback-button-driven** — no slash commands except `/start`
-- Main menu shows pair count, active/error status, and session state
-- Pairs dashboard shows status badges, error counts, filter mode, and schedule per pair
-- Upload Session button hidden when session is already linked
-- Two-step confirmation for destructive actions (delete pair, delete all)
-
-### Observability
-- **In-bot logs**: admin users can view the last 25 log entries directly in Telegram
-- Circular log buffer (100 entries) attached to Python's root logger
-- Refresh button for live log updates
+| Feature | Description |
+|---------|-------------|
+| **🔄 Automatic Reposting** | Watch source channels and repost to destinations |
+| **🎯 Smart Filtering** | Keep, Remove, Replace, or Nuke links/usernames |
+| **⏰ Flexible Scheduling** | Instant or scheduled intervals (5min - 24hr) |
+| **📸 Media Handling** | Full support for photos, videos, documents, albums |
+| **🔒 Protected Content** | Download/upload mode for `noforward` media |
+| **🩺 Self-Healing** | Autonomic heartbeat detects and fixes stalls |
+| **🔁 Loop History** | Restart from beginning when caught up |
+| **📊 Real-Time Stats** | Progress tracking with ETA calculations |
+| **🌐 REST API** | Full programmatic control via HTTP endpoints |
+| **👥 Multi-User** | Admin, premium, and client user tiers |
 
 ---
 
-## Architecture: The Living Organism
+## 🏛️ Architecture
 
-The project follows a **service-oriented architecture** with strict separation of concerns.
-
-| Layer | Folder | Role |
-|-------|--------|------|
-| **The Mouth** | `bot/` | Telegram bot interface — handlers, FSM states, middleware, keyboards |
-| **The Nervous System** | `services/` | Orchestration layer connecting bot to database, Telethon, and cache |
-| **The Eyes** | `providers/` | Raw Telegram API communication via Telethon |
-| **The Brain** | `core/` | Pure functions for text processing and channel input resolution |
-| **The Surgical Ward** | `scripts/` | High-value resilience tools (Routing Auditor, Triage Verifier) |
-| **The Vault** | `data/` | Database models, engine setup, and repository pattern |
-| **The Skeleton** | `main.py` | Application entry point — initializes DB, heals schema, recovers listeners |
-| **The DNS / DNA** | `core/config.py` | Pydantic-validated environment configuration + admin IDs |
-| **The Constitution** | `THE_CONSTITUTION.md`| The project's "Laws" for maintenance and future development |
-
----
-
-## Project Structure
+Mister Reposter V2 follows the **Organism Model** — a biological metaphor for clean separation of concerns:
 
 ```
-Mister_ReposterV2/
-|
-|-- bot/                        # The Mouth (Telegram Interface)
-|   |-- handlers/
-|   |   |-- menu.py             # /start, main menu, delete-all
-|   |   |-- pairs.py            # Create pair flow, toggle, delete, confirm
-|   |   |-- session.py          # Session upload flow
-|   |   |-- logs.py             # Admin-only log viewer
-|   |   |-- utils.py            # Shared render helpers
-|   |-- keyboards.py            # All inline keyboard builders
-|   |-- states.py               # FSM state definitions
-|   |-- middleware.py            # Command gatekeeper
-|   |-- routers.py              # Router registration
-|
-|-- services/                   # The Nervous System
-|   |-- repost_engine.py        # Core repost logic, scheduling, listeners
-|   |-- session_manager.py      # Session file handling
-|   |-- media_cache.py          # Media reference + file_id caching
-|
-|-- providers/                  # The Eyes
-|   |-- telethon_client.py      # Telethon client management
-|
-|-- core/                       # The Brain
-|   |-- repost/
-|   |   |-- resolver.py         # Channel input parser (pure functions)
-|   |   |-- logic.py            # Message cleaning (filter rules)
-|
-|-- data/                       # The Vault
-|   |-- models.py               # SQLAlchemy models (User, RepostPair)
-|   |-- repository.py           # UserRepository (all DB access)
-|   |-- database.py             # Async engine setup
-|   |-- sessions/               # Telethon .session files
-|   |-- reposter.db             # SQLite database (auto-created)
-|
-|-- scripts/                     # The Surgical Ward (High-Value Tools)
-|   |-- verify_routing.py        # The Sting Operation (Collision Auditor)
-|   |-- verify_triage.py         # Message classification tester
-|   |-- simulate_stats.py        # UI/UX simulation tool
-|
-|-- tests/                       # Historical Diagnostics & Archive
-|   |-- db_migration_to_v2.py
-|   |-- stress_test_system_resilience.py
-|
-|-- ideas/                       # (Git-Ignored) Business Strategy Vault
-|   |-- reposter_business.md
-|   |-- general_life.md
-|
-|-- infrastructure/              # System Safeguards
-|   |-- checks/
-|   |   |-- guardian.py          # Real-time architectural enforcer
-|
-|-- docs/                       # Documentation
-|   |-- mister.md               # Technical progress journal
-|   |-- dev_log.md              # Personal reflective dev log
-|
-|-- THE_CONSTITUTION.md          # Project "Laws" and Analogy Guide
+┌─────────────────────────────────────────────────────────────────┐
+│                     SKELETON (main.py)                          │
+│         Hybrid Boot: Bot Polling + FastAPI on Port 5555         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   NERVES (services/)                            │
+│     RepostEngine • Autonomic • SessionManager • MediaCache      │
+└─────────────────────────────────────────────────────────────────┘
+          │                   │                   │
+          ▼                   ▼                   ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  MOUTH (bot/)   │ │ EYES/HANDS      │ │  MEMORY (data/) │
+│                 │ │ (providers/)    │ │                 │
+│ • Handlers      │ │                 │ │ • Models        │
+│ • Keyboards     │ │ • Telethon      │ │ • Repository    │
+│ • Middleware    │ │   Provider      │ │ • Database      │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    BRAIN (core/)                                │
+│          Pure Logic • MessageCleaner • ChannelResolver          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
----
+### Layer Responsibilities
 
-## Database Schema
-
-### users
-| Column | Type | Description |
-|--------|------|-------------|
-| id | BigInteger (PK) | Telegram user ID |
-| username | String | Telegram username |
-| created_at | DateTime | Account creation timestamp |
-| has_active_session | Boolean | Whether a Telethon session is linked |
-| session_string | String (nullable) | Base64 session string |
-
-### repost_pairs
-| Column | Type | Description |
-|--------|------|-------------|
-| id | Integer (PK) | Auto-incrementing pair ID |
-| user_id | BigInteger (FK) | Owner's Telegram user ID |
-| source_id | String | Source channel username or numeric ID |
-| destination_id | String | Destination channel |
-| is_active | Boolean | Whether the pair is actively listening |
-| last_reposted_at | DateTime (nullable) | Timestamp of last successful repost |
-| filter_type | Integer | 0=keep original, 1=remove links, 2=replace links |
-| replacement_link | String (nullable) | Custom link for filter_type=2 |
-| schedule_interval | Integer (nullable) | Minutes between flushes; 0/null=instant |
-| start_from_msg_id | Integer (nullable) | Message ID for backfill start |
-| error_count | Integer | Consecutive error count (resets on success) |
-| status | String | "active", "paused", or "error" |
+| Layer | Can Do | Cannot Do |
+|-------|--------|-----------|
+| **Mouth** (`bot/`) | Render UI, handle input, call Services | Open DB, contain business logic |
+| **Nerves** (`services/`) | Open DB, call Repos, apply rules | Send Telegram messages |
+| **Memory** (`data/`) | Define models, execute queries | Contain business logic |
+| **Eyes/Hands** (`providers/`) | Talk to Telegram API | Know about business logic |
+| **Brain** (`core/`) | Pure logic, text processing | Import aiogram, SQLAlchemy |
+| **Utilities** (`utils/`) | Pure functions, logging | Import other layers |
 
 ---
 
-## FSM States
+## 🚀 Quick Start
 
-| State | Purpose |
-|-------|---------|
-| `SessionUpload.waiting_for_input` | User is sending a .session file or base64 string |
-| `CreatePair.waiting_for_source` | Awaiting source channel input |
-| `CreatePair.waiting_for_destination` | Awaiting destination channel input |
-| `CreatePair.waiting_for_filter` | Choosing filter mode |
-| `CreatePair.waiting_for_replacement` | Entering replacement link (filter_type=2 only) |
-| `CreatePair.waiting_for_schedule` | Choosing schedule interval |
-| `CreatePair.waiting_for_start_message` | Optionally entering start-from message (scheduled only) |
-| `CreatePair.waiting_for_confirmation` | Reviewing pair summary before activation |
+### Prerequisites
 
----
+- Python 3.11+
+- Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
+- Telegram API ID & Hash (from [my.telegram.org](https://my.telegram.org))
+- PM2 (for production deployment)
 
-## Permissions
+### Installation
 
-### Admin IDs
-Defined in `config.py` as `ADMIN_IDS`:
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/Mister_ReposterV2.git
+cd Mister_ReposterV2
 
-```python
-ADMIN_IDS: list[int] = [8526011565]
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+.\venv\Scripts\activate  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### Admin-Only Features
-- **Logs**: the "Logs" button is only visible to admin users in the main menu. Non-admin users who somehow trigger the `logs` callback receive an "Access denied" alert.
-
-### User Features (All Users)
-- Upload session
-- Create, view, toggle, and delete repost pairs
-- Delete all pairs
-
----
-
-## Channel Input Formats
-
-The bot accepts all of the following when specifying source or destination channels:
-
-| Format | Example |
-|--------|---------|
-| Username | `@channelname` |
-| t.me link | `t.me/channelname` |
-| Private invite | `t.me/+invite_hash` |
-| Private invite (old) | `t.me/joinchat/hash` |
-| Private post link | `t.me/c/12345/50` |
-| Public post link | `t.me/channelname/50` |
-| Numeric ID | `-1001234567890` |
-| Forwarded message | (auto-extracts chat ID) |
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BOT_TOKEN` | Yes | Telegram Bot API token from @BotFather |
-| `API_ID` | Yes | Telegram API ID from my.telegram.org |
-| `API_HASH` | Yes | Telegram API hash from my.telegram.org |
-| `DATABASE_URL` | No | Defaults to `sqlite+aiosqlite:///data/reposter.db` |
+### Configuration
 
 Create a `.env` file in the project root:
 
-```
+```env
+# Required
 BOT_TOKEN=your_bot_token_here
-API_ID=12345678
-API_HASH=your_api_hash_here
+API_ID=your_api_id
+API_HASH=your_api_hash
+
+# Optional
+API_KEY=your_api_key_for_rest_api
+OWNER_USERNAME=YourUsername
+DATABASE_URL=sqlite+aiosqlite:///data/reposter.db
 ```
 
----
-
-## Setup & Run
+### Running
 
 ```bash
-pip install -r requirements.txt
+# Development
 python main.py
+
+# Production (PM2)
+pm2 start ecosystem.config.js
 ```
 
-The bot will:
-1. Initialize the database and run migrations
-2. Start the health-check web server on port 5000
-3. Recover all active listeners from the database
-4. Begin polling for Telegram updates
+The bot will start with:
+- Telegram bot polling
+- REST API on port 5555
+- Guardian pre-boot checks
+- Autonomic heartbeat monitoring
 
 ---
 
-## Usage Flow
+## 📁 Project Structure
 
-1. Send `/start` to the bot
-2. Tap **Upload Session** to link your Telegram account (.session file or base64 string)
-3. Tap **Create Pair** to set up a repost rule:
-   - Enter source channel (any supported format)
-   - Enter destination channel
-   - Choose filter mode (keep/remove/replace links)
-   - Choose schedule interval (instant to 24 hours)
-   - Optionally set a start-from message (scheduled only)
-   - Review the preview and tap **Confirm**
-4. Tap **My Pairs** to view, pause/resume, or delete pairs
-5. Admin users can tap **Logs** to view recent application logs
+```
+Mister_ReposterV2/
+├── main.py                      # Entry point (hybrid bot + API)
+├── requirements.txt             # Python dependencies
+├── ecosystem.config.js          # PM2 configuration
+├── .env                         # Secrets (not in git)
+│
+├── app/
+│   ├── api/                     # 🌐 REST API Layer
+│   │   ├── routes.py            # All endpoints
+│   │   ├── schemas.py           # Pydantic models
+│   │   ├── security.py          # API key auth
+│   │   └── server.py            # FastAPI factory
+│   │
+│   ├── bot/                     # 🗣 Mouth Layer
+│   │   ├── keyboards.py         # Reply & inline keyboards
+│   │   ├── keyboards_admin.py   # Admin keyboards
+│   │   ├── middleware.py        # NetworkRetry, SessionGuard
+│   │   ├── routers.py           # Router registration
+│   │   ├── states.py            # FSM states
+│   │   └── handlers/            # All handlers
+│   │       ├── menu.py          # /start, main menu
+│   │       ├── session.py       # Session upload
+│   │       ├── pairs.py         # Pair creation FSM
+│   │       ├── pairs_manage.py  # Toggle, loop, protect
+│   │       ├── pairs_client.py  # Client controls
+│   │       ├── stats.py         # Stats dashboard
+│   │       ├── admin_users.py   # User management
+│   │       ├── admin_settings.py# Bot settings
+│   │       ├── logs.py          # Log viewer
+│   │       ├── alertbot.py      # Inventory alerts
+│   │       └── utils.py         # Shared helpers
+│   │
+│   ├── core/                    # 🧠 Brain Layer
+│   │   ├── config.py            # Pydantic settings
+│   │   └── repost/
+│   │       ├── logic.py         # MessageCleaner
+│   │       └── resolver.py      # Channel input parser
+│   │
+│   ├── data/                    # 💾 Memory Layer
+│   │   ├── database.py          # Async engine, session factory
+│   │   ├── models.py            # SQLAlchemy ORM
+│   │   ├── repository.py        # DB operations
+│   │   └── sessions/            # .session files
+│   │
+│   ├── providers/               # 👁️ Eyes/Hands Layer
+│   │   └── telethon_client.py   # Telethon wrapper
+│   │
+│   ├── services/                # ⚡ Nerves Layer
+│   │   ├── singleton.py         # Global RepostService
+│   │   ├── repost_engine.py     # Main orchestrator
+│   │   ├── engine_loops.py      # Backfill, schedule flush
+│   │   ├── engine_utils.py      # Classifier, dedup
+│   │   ├── autonomic.py         # Heartbeat monitor
+│   │   ├── session_manager.py   # Session validation
+│   │   ├── stats_service.py     # Progress calculations
+│   │   ├── media_cache.py       # File_id caching
+│   │   └── inventory_monitor.py # Hourly alerts
+│   │
+│   └── utils/                   # 🔧 Utilities
+│       ├── log_buffer.py        # Circular log buffer
+│       └── protection.py        # AntiBanGuard
+│
+├── infrastructure/              # System-level checks
+│   └── checks/
+│       ├── guardian.py          # Pre-boot integrity
+│       ├── benchmark_engine.py  # Performance testing
+│       └── ui_integrity_audit.py# Routing collision
+│
+├── scripts/                     # Utility scripts
+│   ├── simulate_stats.py        # ETA calculator
+│   ├── verify_routing.py        # Routing auditor
+│   └── verify_triage.py         # Classification tests
+│
+├── migrations/                  # Alembic migrations
+├── scratch/                     # Temp storage
+│   ├── temp_media/              # Downloaded media
+│   └── temp_thumbs/             # Thumbnails
+├── logs/                        # Application logs
+└── userguide/                   # User documentation
+```
 
 ---
 
-## Key Design Constants
+## 🗄️ Database Schema
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `MAX_PAIRS` | 4 | Maximum repost pairs per user |
-| `MAX_ERRORS_BEFORE_DISABLE` | 5 | Consecutive errors before auto-disable |
-| `FLOOD_WAIT_MAX_RETRY` | 3 | Max retry attempts for FloodWait |
-| `DEDUP_CACHE_SIZE` | 500 | LRU cache entries per pair for dedup |
-| `MediaCache max_age` | 24 hours | Message bundle eviction TTL |
-| `file_id cache TTL` | 7 days | file_id reference eviction TTL |
+### Entity Relationship
+
+```
+users
+    └─< repost_pairs
+```
+
+### `users` Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Primary key (Telegram user ID) |
+| `username` | TEXT | Telegram username |
+| `session_string` | TEXT | Telethon session (encrypted) |
+| `has_active_session` | BOOLEAN | Session validity |
+| `is_admin` | BOOLEAN | Admin privileges |
+| `is_premium` | BOOLEAN | Premium access |
+| `premium_until` | DATETIME | Premium expiry |
+| `created_at` | DATETIME | Auto-set |
+
+### `repost_pairs` Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Primary key |
+| `user_id` | INTEGER | FK → users.id |
+| `source_id` | TEXT | Source channel |
+| `destination_id` | TEXT | Destination channel |
+| `source_display` | TEXT | Cached display name |
+| `destination_display` | TEXT | Cached display name |
+| `filter_type` | INTEGER | 0=Keep, 1=Remove, 2=Replace, 3=Nuke |
+| `replacement_link` | TEXT | Replacement text |
+| `schedule_interval` | INTEGER | Minutes between posts |
+| `start_from_msg_id` | INTEGER | Backfill starting point |
+| `total_posts_source` | INTEGER | Cached message count |
+| `is_active` | BOOLEAN | Running status |
+| `status` | TEXT | normal / error |
+| `is_protected` | BOOLEAN | Download/upload mode |
+| `loop_history` | BOOLEAN | Restart when done |
+| `error_count` | INTEGER | Consecutive errors |
+| `consecutive_heals` | INTEGER | Healing attempts |
+| `last_reposted_at` | DATETIME | Last successful post |
+| `next_allowed_post_at` | DATETIME | Persistent timer |
+| `alerted_3d` | BOOLEAN | 3-day alert sent |
+| `alerted_caught_up` | BOOLEAN | Caught-up alert sent |
 
 ---
 
-## Dependencies
+## 🎮 Bot Commands
 
-- **aiogram 3.4.1** — Telegram Bot API framework (async, FSM, middleware)
-- **telethon 1.36.0** — Telegram MTProto client for user account operations
-- **SQLAlchemy 2.0.25** — Async ORM for database access
-- **aiosqlite 0.19.0** — Async SQLite driver
-- **alembic 1.13.0** — Database migration management
-- **pydantic / pydantic-settings** — Configuration validation
-- **aiohttp** — Health-check HTTP endpoint
+### User Commands
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Main menu |
+| `/alertbot` | Verify for inventory alerts |
+
+### Main Menu Options
+
+| Button | Action |
+|--------|--------|
+| 📱 Session | Upload/manage Telethon session |
+| 📢 My Pairs | View and manage repost pairs |
+| ➕ New Pair | Create a new repost pair |
+| 📊 Stats | View progress statistics |
+| ❓ Support | Contact support |
+
+### Pair Management
+
+| Action | Description |
+|--------|-------------|
+| ▶️/⏸️ | Pause/Resume pair |
+| 🔁 | Toggle loop history |
+| 🔒 | Toggle protection mode |
+| ⚡ | Force immediate post |
+| 🗑️ | Delete pair |
+
+### Filter Modes
+
+| Mode | Name | Behavior |
+|------|------|----------|
+| 0 | Keep | Leave text unchanged |
+| 1 | Remove | Strip all links and @usernames |
+| 2 | Replace | Replace links with custom text |
+| 3 | Nuke | Replace entire message with custom text |
+
+### Schedule Options
+
+| Option | Interval |
+|--------|----------|
+| Instant | 0 (immediate) |
+| 5 minutes | 5 |
+| 15 minutes | 15 |
+| 30 minutes | 30 |
+| 1 hour | 60 |
+| 2 hours | 120 |
+| 6 hours | 360 |
+| 12 hours | 720 |
+| 24 hours | 1440 |
 
 ---
 
-## Development Rules
+## 🌐 REST API
 
-1. **Known State**: every variable must be explicitly set before use
-2. **Durability**: all critical state must survive restarts
-3. **Single Responsibility**: each module does one thing
-4. **Explicit Logic**: no implicit behavior or magic
-5. **Idempotency**: operations must be safe to repeat
-6. **Resilience**: graceful handling of all failures
-7. **Observability**: everything must be loggable and inspectable
+### Authentication
+
+All endpoints except `/health` require the `X-API-Key` header:
+
+```bash
+curl -H "X-API-Key: your_api_key" http://localhost:5555/stats/123456789
+```
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/stats/{user_id}` | Get user statistics |
+| POST | `/pair` | Create a pair |
+| POST | `/session` | Ingest session string |
+| POST | `/pair/{pair_id}/toggle` | Toggle pair |
+| DELETE | `/pair/{pair_id}` | Delete pair |
+| PATCH | `/pair/{pair_id}` | Update pair |
+| GET | `/pairs/all` | Admin: all pairs |
+| GET | `/session/{user_id}` | Admin: get session |
+
+### Example Requests
+
+**Create a Pair:**
+```bash
+curl -X POST http://localhost:5555/pair \
+  -H "X-API-Key: your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": 123456789,
+    "source_id": "@source_channel",
+    "destination_id": "@dest_channel",
+    "interval": 30,
+    "filter_type": 1,
+    "start_id": 1000
+  }'
+```
+
+**Get Stats:**
+```bash
+curl -H "X-API-Key: your_api_key" \
+  http://localhost:5555/stats/123456789
+```
 
 ---
 
-REVISION: 4.1.0
-STATUS: OPERATIONAL
+## 🔧 Core Concepts
+
+### Backfill
+
+Sequential reposting from an older message ID to the present. The bot fetches batches of 50 messages, processes each one, and advances a bookmark pointer.
+
+### Sentinel Mode
+
+After catching up to the present, the bot watches for new messages in real-time rather than backfilling.
+
+### Protected Media
+
+Messages with `noforward` enabled cannot be forwarded. The bot downloads them to `scratch/temp_media/`, preserves metadata (duration, dimensions, filename), and re-uploads them.
+
+### Autonomic Healing
+
+The heartbeat monitor runs every 15 minutes and scans for stalled pairs. If a pair hasn't posted within `threshold = interval + max(15, interval * 0.25)` minutes, it triggers a surgical heal.
+
+### Failed Media Lock (FML)
+
+"Landmine" messages with corrupt media are locked to prevent infinite retry loops.
+
+### Fresh Fetch
+
+For scheduled posts, the bot re-retrieves the message 1 second before sending to prevent stale file reference errors.
+
+### Human Jitter
+
+Random delays added to operations to simulate human behavior and avoid Telegram's anti-bot detection.
+
+---
+
+## 🚀 Deployment
+
+### PM2 Configuration
+
+`ecosystem.config.js`:
+```javascript
+module.exports = {
+  apps: [{
+    name: "mister-reposter",
+    script: "main.py",
+    interpreter: "python3",
+    max_memory_restart: "250M",
+    autorestart: true,
+    restart_delay: 5000
+  }]
+}
+```
+
+### Deploy Commands
+
+```bash
+# Start
+pm2 start ecosystem.config.js
+
+# Restart
+pm2 restart mister-reposter
+
+# View logs
+pm2 logs mister-reposter
+
+# Stop
+pm2 stop mister-reposter
+
+# Monitor
+pm2 monit
+```
+
+### First-Time Setup
+
+1. Clone repository
+2. Create `.env` with secrets
+3. Install dependencies: `pip install -r requirements.txt`
+4. Start with PM2: `pm2 start ecosystem.config.js`
+
+---
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Bot not responding | Invalid token | Check `BOT_TOKEN` in `.env` |
+| Session invalid | Expired/revoked | Re-upload session via bot |
+| FloodWait errors | Too many requests | Bot auto-handles; reduce interval |
+| Media not sending | Stale file reference | Fresh Fetch handles automatically |
+| Pair stuck | Network issue | Autonomic healing will fix |
+| Double heartbeat | Bug in `__init__` | Ensure only `main.py` starts it |
+
+### Logs
+
+```bash
+# PM2 logs
+pm2 logs mister-reposter --lines 100
+
+# Application logs
+tail -f logs/app.log
+
+# Bot log viewer
+# Use the 📋 Logs button in the bot menu
+```
+
+### Health Check
+
+```bash
+curl http://localhost:5555/health
+# Expected: {"status": "ok"}
+```
+
+---
+
+## 🧩 Extending the Bot
+
+### Adding a New Filter Mode
+
+1. Add to `FILTER_LABELS` in `bot/keyboards.py`
+2. Update `MessageCleaner.clean()` in `core/repost/logic.py`
+3. Add tests in `scripts/verify_triage.py`
+
+### Adding a New Schedule Option
+
+1. Add to `SCHEDULE_LABELS` in `bot/keyboards.py`
+2. Add callback handler in `pairs.py` (`setsched_`)
+3. Ensure `schedule_interval` is stored correctly
+
+### Adding a New API Endpoint
+
+1. Add route to `api/routes.py`
+2. Add schema to `api/schemas.py`
+3. Call appropriate `repost_service` method
+
+### Adding a New Admin Feature
+
+1. Add handler to `bot/handlers/admin_users.py`
+2. Add button to `bot/keyboards_admin.py`
+3. Add callback handler in same file
+
+---
+
+## 📚 Glossary
+
+| Term | Definition |
+|------|------------|
+| **Backfill** | Sequential reposting from older to present |
+| **FloodWait** | Telegram rate limit error |
+| **Ghost Message** | Deleted message (skipped) |
+| **Protected Media** | `noforward` content requiring download/upload |
+| **Autonomic Healing** | Self-healing that detects and fixes stalls |
+| **Sentinel Mode** | Watching for new messages after catch-up |
+| **Failed Media Lock** | Locks corrupt media to prevent loops |
+| **Surgical Healing** | Manual force-post to unstick a loop |
+| **Nuke & Replace** | Filter mode replacing entire text |
+| **Fresh Fetch** | Re-retrieve before send to prevent stale refs |
+| **Human Jitter** | Random delays to avoid detection |
+
+---
+
+## 📄 License
+
+MIT License - See [LICENSE](LICENSE) for details.
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing`)
+5. Open a Pull Request
+
+---
+
+## 📞 Support
+
+- **Telegram:** [@MisterKayCodes](https://t.me/MisterKayCodes)
+- **Issues:** [GitHub Issues](https://github.com/yourusername/Mister_ReposterV2/issues)
+- **Docs:** See `userguide/` directory
+
+---
+
+**Built with ❤️ by MisterKayCodes**
+
+*Last updated: 2025*

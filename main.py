@@ -84,6 +84,11 @@ async def main():
     asyncio.create_task(inventory_monitor_loop(bot))
     logger.info("Inventory monitor started - will check content every hour")
 
+    # Start pair ID auto-healer in background
+    from app.services.pair_id_healer import heal_all_pair_ids
+    asyncio.create_task(heal_all_pair_ids(repost_service))
+    logger.info("Pair ID Healer task dispatched.")
+
     # 3. HYBRID BOOT: Bot Polling + FastAPI
     try:
         await asyncio.gather(
