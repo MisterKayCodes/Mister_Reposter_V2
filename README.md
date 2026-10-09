@@ -187,6 +187,7 @@ Mister_ReposterV2/
 │   ├── services/                # ⚡ Nerves Layer
 │   │   ├── singleton.py         # Global RepostService
 │   │   ├── repost_engine.py     # Main orchestrator
+│   │   ├── pair_id_healer.py    # Auto-resolves non-numeric channel IDs
 │   │   ├── engine_loops.py      # Backfill, schedule flush
 │   │   ├── engine_utils.py      # Classifier, dedup
 │   │   ├── autonomic.py         # Heartbeat monitor
