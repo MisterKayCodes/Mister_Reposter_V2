@@ -9,7 +9,7 @@ from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError, rpcbaseerrors
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest
 from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.tl.types import DocumentAttributeVideo, DocumentAttributeFilename
+from telethon.tl.types import DocumentAttributeVideo, DocumentAttributeFilename, MessageMediaWebPage
 from telethon.sessions import StringSession
 
 logger = logging.getLogger(__name__)
@@ -357,15 +357,19 @@ class TelethonProvider:
         media_list = []
         for m in messages:
             file_id = getattr(m, "cached_file_id", None) or getattr(m, "media", None)
-            if file_id: media_list.append(file_id)
+            if file_id and not isinstance(file_id, MessageMediaWebPage):
+                media_list.append(file_id)
         if not media_list: raise Exception("empty_album")
         return await client.send_file(target, media_list, caption=getattr(messages[0], "message", ""))
 
     async def _send_single(self, client, target, message):
         file_id = getattr(message, "cached_file_id", None)
+        media = file_id or getattr(message, "media", None)
+        if isinstance(media, MessageMediaWebPage):
+            media = None
         # Rule: Never 'Forward' if we want to change the caption.
         # We pass the media and the (possibly cleaned) message text separately.
-        return await client.send_message(target, message.message, file=file_id or message.media)
+        return await client.send_message(target, message.message, file=media)
 
     async def stop_listener(self, user_id: int):
         client = self.active_clients.pop(user_id, None)
