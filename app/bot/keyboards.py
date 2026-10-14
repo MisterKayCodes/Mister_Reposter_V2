@@ -5,7 +5,7 @@ The Mouth's button rack — separated for clean architecture.
 """
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-MAX_PAIRS = 4
+MAX_PAIRS = 8
 
 SCHEDULE_LABELS = {
     0: "Instant",
@@ -58,36 +58,58 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
 
 def pairs_kb(pairs, target_id: int = None):
     builder = InlineKeyboardBuilder()
+    prefix = "u" if target_id else ""
+    ext = f"{target_id}_" if target_id else ""
+    
     for idx, p in enumerate(pairs, 1):
+        status_icon = "🟢" if p.is_active else "🟡"
         if getattr(p, "status", "") == "error":
-            label = "🔄 Clear"
-        else:
-            label = "Pause" if p.is_active else "Play"
-            
-        # If target_id is present, we are in Admin Remote mode
-        prefix = "u" if target_id else ""
-        ext = f"{target_id}_" if target_id else ""
-        
-        builder.button(text=f"{label} #{idx}", callback_data=f"{prefix}tog_{ext}{p.id}")
-        
-        loop_label = "♻️ Loop: ON" if getattr(p, "loop_history", False) else "♻️ Loop: OFF"
-        builder.button(text=loop_label, callback_data=f"{prefix}loop_{ext}{p.id}")
+            status_icon = "🔴"
+        builder.button(text=f"⚙️ Manage #{idx} [{status_icon}]", callback_data=f"{prefix}pview_{ext}{p.id}")
 
-        prot_label = "🔒 Prot: ON" if getattr(p, "is_protected", False) else "🔒 Prot: OFF"
-        builder.button(text=prot_label, callback_data=f"{prefix}prot_{ext}{p.id}")
-        
-        builder.button(text=f"Delete #{idx}", callback_data=f"{prefix}del_{ext}{p.id}")
-        
-        builder.button(text="🚀 Post One Now", callback_data=f"{prefix}force_{ext}{p.id}")
-        
     if len(pairs) < MAX_PAIRS:
-        # Remote create or local create
         c_data = f"uaddpair_{target_id}" if target_id else "create"
-        builder.button(text="+ New Pair", callback_data=c_data)
-        
+        builder.button(text="➕ Add New Pair", callback_data=c_data)
+
     back_data = f"uview_{target_id}" if target_id else "main"
-    builder.button(text="Back", callback_data=back_data)
-    builder.adjust(2)
+    builder.button(text="🔙 Back", callback_data=back_data)
+
+    # 2 buttons per row for pairs, 1 each for Add and Back
+    pair_rows = [2] * (len(pairs) // 2)
+    if len(pairs) % 2 != 0:
+        pair_rows.append(1)
+    
+    extra_rows = [1] if len(pairs) < MAX_PAIRS else []
+    extra_rows.append(1)
+
+    builder.adjust(*(pair_rows + extra_rows))
+    return builder.as_markup()
+
+
+def pair_detail_kb(pair, target_id: int = None):
+    builder = InlineKeyboardBuilder()
+    prefix = "u" if target_id else ""
+    ext = f"{target_id}_" if target_id else ""
+
+    if getattr(pair, "status", "") == "error":
+        label = "🔄 Reset Error"
+    else:
+        label = "⏸️ Pause" if pair.is_active else "▶️ Resume"
+
+    builder.button(text=label, callback_data=f"{prefix}tog_{ext}{pair.id}")
+    builder.button(text="🚀 Post One Now", callback_data=f"{prefix}force_{ext}{pair.id}")
+
+    loop_label = "♻️ Loop: ON" if getattr(pair, "loop_history", False) else "♻️ Loop: OFF"
+    builder.button(text=loop_label, callback_data=f"{prefix}loop_{ext}{pair.id}")
+
+    prot_label = "🔒 Prot: ON" if getattr(pair, "is_protected", False) else "🔒 Prot: OFF"
+    builder.button(text=prot_label, callback_data=f"{prefix}prot_{ext}{pair.id}")
+
+    builder.button(text="🗑️ Delete Pair", callback_data=f"{prefix}del_{ext}{pair.id}")
+
+    back_data = f"upairs_{target_id}" if target_id else "pairs"
+    builder.button(text="🔙 Back to Pairs", callback_data=back_data)
+    builder.adjust(2, 2, 1, 1)
     return builder.as_markup()
 
 

@@ -7,24 +7,25 @@ import re
 
 class MessageCleaner:
     # Rule 11: Pre-compile regex for speed and precision
-    # This specifically targets TG links and usernames without swallowing surrounding punctuation
+    # Matches:
+    # 1. Protocols: http://, https://
+    # 2. www. prefixes
+    # 3. Known / common naked domain links (e.g. bit.ly/xxx, x.com/xxx, t.me/xxx, youtube.com/xxx)
+    # 4. Telegram handles: @username
     _REMOVE_PATTERN = re.compile(
-        r'(?:https?://)?t\.me/(?:joinchat/|\+)?[\w_-]+/?(?:\d+)?|@[\w_]+', 
+        r'(?:https?://[^\s]+|www\.[^\s]+|(?:[a-zA-Z0-9-]+\.)+(?:com|me|org|net|io|co|ly|ai|app|link|xyz|info|biz|dev|site|online|store|gg|ru|br|uk|de|tv)(?:/[^\s]*)?|@[\w_]+)',
         re.IGNORECASE
     )
-    _REPLACE_PATTERN = re.compile(
-        r'(?:https?://)?t\.me/(?:joinchat/|\+)?[\w_-]+/?(?:\d+)?', 
-        re.IGNORECASE
-    )
+    _TRAILING_PUNCT = re.compile(r'[.,;:!?)]+$')
 
-    # This is like a 'Bouncers' checklist at a club. 
-    # It scans every message and either keeps it as-is, deletes links/usernames, 
-    # or swaps them for something else. We also perform a 'Final Polish' to 
-    # remove extra spaces and messy formatting.
     @staticmethod
     def clean(text: str, mode: int, replacement: str = None) -> str:
         """
-        Modes: 0 = As Is, 1 = Remove, 2 = Replace
+        Modes: 
+        0 = As Is (Keep Original)
+        1 = Remove All Links & Handles
+        2 = Replace with Custom Link / @Username
+        3 = Nuke & Replace (Complete message replacement)
         """
         if not text or mode == 0:
             return text
@@ -33,23 +34,33 @@ class MessageCleaner:
         if mode == 3:
             return replacement if replacement else ""
 
-        cleaned_text = text
-        
-        # Rule 3: Single Responsibility - Handle matching in one pass
-        if mode == 1:
-            # Delete matches (including @usernames)
-            cleaned_text = MessageCleaner._REMOVE_PATTERN.sub('', cleaned_text)
-        elif mode == 2:
-            # Swap matches for custom link (including @usernames for cross-promotion)
-            rep = replacement if replacement else ""
-            cleaned_text = MessageCleaner._REMOVE_PATTERN.sub(rep, cleaned_text)
+        def _replace_match(match):
+            raw = match.group(0)
+            punct = ""
+            m_punct = MessageCleaner._TRAILING_PUNCT.search(raw)
+            if m_punct:
+                punct = m_punct.group(0)
+                raw = raw[:-len(punct)]
+                
+            if mode == 1:
+                return punct
+            elif mode == 2:
+                rep = replacement.strip() if replacement else ""
+                if rep:
+                    return f"{rep}{punct}"
+                return punct
+            return raw + punct
+
+        cleaned = MessageCleaner._REMOVE_PATTERN.sub(_replace_match, text)
 
         # Rule 14: Final Polish
-        # Remove triple+ newlines, double spaces, and lead/trail whitespace
-        cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
-        cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+        # Remove empty comma sequences, triple+ newlines, double spaces, and lead/trail whitespace
+        cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+        cleaned = re.sub(r' +([.,;:!?])', r'\1', cleaned)
+        cleaned = re.sub(r',\s*,+', ',', cleaned)
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         
-        return cleaned_text.strip()
+        return cleaned.strip()
 
 # Think of this like 'Cleaning the mud off a shoe' before entering the house.
 # We strip off link prefixes like 'https://t.me/' so we're left with just 

@@ -8,11 +8,29 @@ from aiogram import Router, F, types
 
 from app.bot.keyboards import delete_confirm_kb
 from app.bot.handlers.utils import (
-    render_pairs_view, repost_service, safe_callback_answer
+    render_pairs_view, render_pair_detail_view, repost_service, safe_callback_answer
 )
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+# --- VIEW PAIR DETAIL HANDLERS ---
+
+@router.callback_query(F.data.startswith("pview_"))
+async def cb_view_pair_detail(callback: types.CallbackQuery):
+    await safe_callback_answer(callback)
+    pair_id = int(callback.data.split("_")[1])
+    await render_pair_detail_view(callback.message, callback.from_user.id, pair_id)
+
+
+@router.callback_query(F.data.startswith("upview_"))
+async def cb_remote_view_pair_detail(callback: types.CallbackQuery):
+    if not await repost_service.is_admin(callback.from_user.id): return
+    await safe_callback_answer(callback)
+    parts = callback.data.split("_")
+    user_id, pair_id = int(parts[1]), int(parts[2])
+    await render_pair_detail_view(callback.message, user_id, pair_id, is_remote=True)
+
 
 # --- TOGGLE & LIST HANDLERS ---
 
@@ -34,7 +52,7 @@ async def cb_toggle_pair(callback: types.CallbackQuery):
         else:
             await repost_service.activate_pair(user_id, pair_id)
         
-        await render_pairs_view(callback.message, user_id)
+        await render_pair_detail_view(callback.message, user_id, pair_id)
     except Exception as e:
         logger.error(f"Toggle failed: {e}")
         await safe_callback_answer(callback, "⚠️ Connection lag.", show_alert=True)
@@ -49,7 +67,7 @@ async def cb_toggle_loop(callback: types.CallbackQuery):
         new_state = await repost_service.toggle_pair_recycling(user_id, pair_id)
         status = "ENABLED" if new_state else "DISABLED"
         await safe_callback_answer(callback, f"♻️ Smart Loop: {status}")
-        await render_pairs_view(callback.message, user_id)
+        await render_pair_detail_view(callback.message, user_id, pair_id)
     except Exception as e:
         logger.error(f"Loop toggle failed: {e}")
         await safe_callback_answer(callback, "⚠️ Error updating setting.", show_alert=True)
@@ -64,7 +82,7 @@ async def cb_toggle_protection(callback: types.CallbackQuery):
         new_state = await repost_service.toggle_pair_protection(user_id, pair_id)
         status = "ENABLED" if new_state else "DISABLED"
         await safe_callback_answer(callback, f"🔒 Protected Mode: {status}")
-        await render_pairs_view(callback.message, user_id)
+        await render_pair_detail_view(callback.message, user_id, pair_id)
     except Exception as e:
         logger.error(f"Protection toggle failed: {e}")
         await safe_callback_answer(callback, "⚠️ Error updating setting.", show_alert=True)
@@ -81,7 +99,7 @@ async def cb_force_repost(callback: types.CallbackQuery):
         await callback.answer("✅ Success! Check your channel.", show_alert=True)
     else:
         await callback.answer("❌ Failed. Ensure pair is set up and pointer is valid.", show_alert=True)
-    await render_pairs_view(callback.message, user_id)
+    await render_pair_detail_view(callback.message, user_id, pair_id)
 
 
 # --- DELETE LOGIC ---
@@ -125,7 +143,7 @@ async def cb_remote_toggle(callback: types.CallbackQuery):
     if target:
         if target.is_active: await repost_service.deactivate_pair(user_id, pair_id)
         else: await repost_service.activate_pair(user_id, pair_id)
-        await render_pairs_view(callback.message, user_id, is_remote=True)
+        await render_pair_detail_view(callback.message, user_id, pair_id, is_remote=True)
     await safe_callback_answer(callback)
 
 @router.callback_query(F.data.startswith("uloo_"))
@@ -134,7 +152,7 @@ async def cb_remote_loop(callback: types.CallbackQuery):
     parts = callback.data.split("_")
     user_id, pair_id = int(parts[1]), int(parts[2])
     await repost_service.toggle_pair_recycling(user_id, pair_id)
-    await render_pairs_view(callback.message, user_id, is_remote=True)
+    await render_pair_detail_view(callback.message, user_id, pair_id, is_remote=True)
     await safe_callback_answer(callback)
 
 @router.callback_query(F.data.startswith("uprot_"))
@@ -143,7 +161,7 @@ async def cb_remote_prot(callback: types.CallbackQuery):
     parts = callback.data.split("_")
     user_id, pair_id = int(parts[1]), int(parts[2])
     await repost_service.toggle_pair_protection(user_id, pair_id)
-    await render_pairs_view(callback.message, user_id, is_remote=True)
+    await render_pair_detail_view(callback.message, user_id, pair_id, is_remote=True)
     await safe_callback_answer(callback)
 
 @router.callback_query(F.data.startswith("uforce_"))
@@ -153,7 +171,7 @@ async def cb_remote_force(callback: types.CallbackQuery):
     user_id, pair_id = int(parts[1]), int(parts[2])
     await safe_callback_answer(callback, "🚀 Triggering remote post...")
     await repost_service.force_repost_once(user_id, pair_id)
-    await render_pairs_view(callback.message, user_id, is_remote=True)
+    await render_pair_detail_view(callback.message, user_id, pair_id, is_remote=True)
 
 @router.callback_query(F.data.startswith("udel_"))
 async def cb_remote_ask_delete(callback: types.CallbackQuery):

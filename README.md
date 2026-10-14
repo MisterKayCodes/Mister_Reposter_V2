@@ -305,8 +305,8 @@ users
 | Mode | Name | Behavior |
 |------|------|----------|
 | 0 | Keep | Leave text unchanged |
-| 1 | Remove | Strip all links and @usernames |
-| 2 | Replace | Replace links with custom text |
+| 1 | Remove | Strip all web URLs, naked domains, and @usernames |
+| 2 | Replace | Replace all URLs/usernames with custom link/@username |
 | 3 | Nuke | Replace entire message with custom text |
 
 ### Schedule Options

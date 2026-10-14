@@ -12,7 +12,7 @@ import logging
 from app.services.singleton import repost_service
 from app.bot.keyboards import (
     MAX_PAIRS, SCHEDULE_LABELS, FILTER_LABELS,
-    main_menu_kb, pairs_kb,
+    main_menu_kb, pairs_kb, pair_detail_kb,
     stats_pairs_kb, stats_detail_kb, back_kb,
     client_main_menu_kb, client_channels_kb, client_stats_kb
 )
@@ -231,6 +231,53 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
             logger.error(f"Pairs view Telegram error: {e}")
     except Exception as e:
         logger.error(f"Pairs view unexpected error: {e}")
+
+
+async def render_pair_detail_view(message: types.Message, user_id: int, pair_id: int, is_remote: bool = False):
+    """Renders a clean, dedicated control panel for a single pair."""
+    try:
+        pairs = await repost_service.get_user_pairs(user_id)
+        pair = next((p for p in pairs if p.id == pair_id), None)
+        if not pair:
+            back_mark = f"upairs_{user_id}" if is_remote else "pairs"
+            return await message.edit_text("❌ Pair not found.", reply_markup=InlineKeyboardBuilder().button(text="Back", callback_data=back_mark).as_markup())
+
+        idx = next((i for i, p in enumerate(pairs, 1) if p.id == pair_id), 1)
+        status = "🟢 Active" if pair.is_active else "🟡 Paused"
+        if getattr(pair, "status", "") == "error":
+            status = "🔴 Error"
+
+        src_display = pair.source_display or pair.source_id
+        dest_display = pair.destination_display or pair.destination_id
+        src_str = f"@{src_display}" if isinstance(src_display, str) and not src_display.startswith("-") and not src_display.startswith("@") and not src_display.isdigit() else src_display
+        dest_str = f"@{dest_display}" if isinstance(dest_display, str) and not dest_display.startswith("-") and not dest_display.startswith("@") and not dest_display.isdigit() else dest_display
+
+        lines = [
+            f"<b>⚙️ Manage Pair #{idx} [{status}]</b>\n",
+            f"📫 <b>Source:</b> <code>{src_str}</code>",
+            f"📬 <b>Destination:</b> <code>{dest_str}</code>",
+            f"🕒 <b>Schedule:</b> {SCHEDULE_LABELS.get(pair.schedule_interval, 'Instant')}",
+            f"🎯 <b>Filter:</b> {FILTER_LABELS.get(pair.filter_type, 'Keep Original')}",
+        ]
+
+        if pair.filter_type in [2, 3] and pair.replacement_link:
+            lines.append(f"🔗 <b>Replacement:</b> <code>{pair.replacement_link}</code>")
+
+        loop = "ON" if getattr(pair, "loop_history", False) else "OFF"
+        prot = "ON" if getattr(pair, "is_protected", False) else "OFF"
+        lines.append(f"♻️ <b>Smart Loop:</b> {loop} | 🔒 <b>Protected:</b> {prot}")
+        lines.append(f"📍 <b>Pointer:</b> msg #{pair.start_from_msg_id or 1}")
+
+        if status == "🔴 Error":
+            lines.append(f"\n⚠️ <b>Error:</b> <i>{translate_error(repost_service.last_errors.get(pair.id))}</i>")
+
+        await message.edit_text(
+            "\n".join(lines),
+            reply_markup=pair_detail_kb(pair, target_id=user_id if is_remote else None),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Pair detail view error: {e}")
 
 
 # --- CLIENT-FACING RENDERERS (SIMPLE UI) ---
