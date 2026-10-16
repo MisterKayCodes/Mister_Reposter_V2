@@ -22,6 +22,8 @@ async def get_pair_stats(service, user_id: int, pair_id: int):
             pair.total_posts_source = total
         
         current = pair.start_from_msg_id or 1
+        if total > 0 and current > total:
+            current = total
         remaining = max(0, total - current) if total > 0 else 0
         time_left_min = remaining * (pair.schedule_interval or 0)
         

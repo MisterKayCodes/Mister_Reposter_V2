@@ -194,6 +194,12 @@ class TelethonProvider:
             target = int(source_id) if str(source_id).replace("-", "").isdigit() else source_id
             try: target = await self._get_entity_safe(client, target)
             except Exception: pass
+            
+            # Fetch the latest message to get the true highest message ID in the channel
+            latest = await client.get_messages(target, limit=1)
+            if latest and len(latest) > 0 and latest[0]:
+                return latest[0].id
+
             result = await client(GetHistoryRequest(peer=target, offset_id=0, offset_date=None, add_offset=0, limit=0, max_id=0, min_id=0, hash=0))
             return getattr(result, "count", 0)
         except Exception as e:

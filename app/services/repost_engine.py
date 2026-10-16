@@ -355,6 +355,12 @@ class RepostService:
                 
         actual_dest = self._resolved_cache.get(dest_val, dest_val)
 
+        # 1. Backfill Priority: If Backfill task is actively running, let it advance naturally
+        if p.id in self.backfill_tasks and not self.backfill_tasks[p.id].done():
+            logger.info(f"⏳ [Backfill Active] Pair #{p.id} is actively backfilling in sequence. Skipping live dispatch.")
+            return
+
+        # 2. Scheduled Queue: If pair has an interval, enqueue and return (do not post immediately)
         if p.schedule_interval and p.schedule_interval > 0:
             msg_ids = [m.id for m in messages]
             self._enqueue_scheduled(p.id, user_id, p.source_id, actual_dest, msg_ids, p.schedule_interval)
@@ -364,6 +370,10 @@ class RepostService:
                 "time": time.time() + (p.schedule_interval * 60),
                 "preview": "Queueing Live Post..."
             }
+            logger.info(f"⏱️ [Scheduled] Enqueued msg {msg_ids} for Pair #{p.id}. Will post on timer.")
+            return
+
+        # 3. Instant Mode: Post immediately
         notifier = self._get_progress_notifier(user_id) if is_protected else None
         if notifier: await notifier("Detecting protected content. Starting surgical bypass...")
         
