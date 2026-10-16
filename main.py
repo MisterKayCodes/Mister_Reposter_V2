@@ -91,6 +91,10 @@ async def main():
 
     # 3. HYBRID BOOT: Bot Polling + FastAPI
     try:
+        # Clear any stale webhook to prevent TelegramConflictError
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook cleared. Starting long polling...")
+        
         await asyncio.gather(
             dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types()),
             run_api_server()
