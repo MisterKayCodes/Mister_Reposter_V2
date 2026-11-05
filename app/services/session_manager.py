@@ -56,12 +56,11 @@ class SessionService:
 
     async def get_least_loaded_worker(self, niche: str = "nsfw", max_capacity: int = 15) -> User | None:
         """
-        Query workers matching niche pattern (e.g. username like worker_{niche}_%),
+        Query workers assigned to niche (worker_niche == niche),
         count active pairs assigned to each, and return the one with lowest load < max_capacity.
         """
-        pattern = f"worker_{niche}_%"
         async with async_session() as db_session:
-            # Query workers having active sessions and matching username pattern
+            # Query workers having active sessions and matching worker_niche
             stmt = (
                 select(User, func.count(RepostPair.id).label("pair_count"))
                 .outerjoin(
@@ -69,7 +68,7 @@ class SessionService:
                     (RepostPair.user_id == User.id) & (RepostPair.is_active == True)
                 )
                 .where(
-                    User.username.like(pattern),
+                    User.worker_niche == niche,
                     User.has_active_session == True
                 )
                 .group_by(User.id)

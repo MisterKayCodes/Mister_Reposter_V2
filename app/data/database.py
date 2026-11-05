@@ -51,6 +51,13 @@ async def ensure_schema_healed():
                 if col_name not in existing_columns:
                     logger.info(f"Database migration: adding column {col_name} to repost_pairs.")
                     await conn.execute(text(f"ALTER TABLE repost_pairs ADD COLUMN {col_name} {col_def}"))
+
+            # Heal users table
+            user_res = await conn.execute(text("PRAGMA table_info('users')"))
+            existing_user_cols = {row[1] for row in user_res.fetchall()}
+            if "worker_niche" not in existing_user_cols:
+                logger.info("Database migration: adding column worker_niche to users.")
+                await conn.execute(text("ALTER TABLE users ADD COLUMN worker_niche VARCHAR(32)"))
         except Exception as e:
             logger.error(f"Error executing ensure_schema_healed on engine: {e}")
 

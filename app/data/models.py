@@ -25,6 +25,7 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
     premium_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    worker_niche: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
 
 
 class RepostPair(Base):
