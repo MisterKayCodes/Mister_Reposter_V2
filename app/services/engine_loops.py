@@ -8,10 +8,60 @@ import time
 from app.data.database import async_session
 from app.data.repository import UserRepository
 from telethon.errors import rpcbaseerrors
+from telethon.tl.types import DocumentAttributeVideo
 from datetime import datetime, timedelta
 from app.services.engine_utils import MessageClassifier, MessageClassification
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_stars_price(message, pair) -> int:
+    """
+    Calculates Stars paywall locking price based on media type, duration, and cadence:
+    - Photos are ALWAYS FREE (never locked).
+    - Videos < 120s (under 2 minutes): ALWAYS FREE (teaser / engagement bait).
+    - Videos >= 360s: ALWAYS locked using pair.stars_price_long.
+    - Videos >= 120s and < 360s: Locked every Nth post based on pair.stars_cadence using pair.stars_price_short.
+    - If calculated price <= 0 or not configured, return 0 (free).
+    """
+    if not pair:
+        return 0
+
+    msgs = message if isinstance(message, list) else [message]
+    video_duration = None
+
+    for m in msgs:
+        if not m:
+            continue
+        media = getattr(m, 'media', None)
+        if hasattr(media, 'document') and media.document:
+            for attr in getattr(media.document, 'attributes', []):
+                if isinstance(attr, DocumentAttributeVideo):
+                    video_duration = attr.duration
+                    break
+        if video_duration is not None:
+            break
+
+    # Photos or non-videos are always free
+    if video_duration is None:
+        return 0
+
+    # Videos < 120s (under 2 minutes): Always free teaser
+    if video_duration < 120:
+        return 0
+
+    # Videos >= 360s: Long tier
+    if video_duration >= 360:
+        return max(0, getattr(pair, 'stars_price_long', 0) or 0)
+
+    # Videos >= 120s and < 360s: Cadence lock with short tier
+    cadence = getattr(pair, 'stars_cadence', 4) or 4
+    first_msg = msgs[0] if msgs else None
+    msg_id = getattr(first_msg, 'id', 0) or 0
+    if cadence > 0 and (msg_id % cadence == 0):
+        return max(0, getattr(pair, 'stars_price_short', 0) or 0)
+
+    return 0
 
 async def run_backfill(service, user_id, source, destination, from_msg_id, filter_type, replacement_link, interval_minutes, pair_id):
     """The main backfill loop extracted from RepostService."""
@@ -67,7 +117,7 @@ async def run_backfill(service, user_id, source, destination, from_msg_id, filte
                 if ghost_status == "error":
                     break
 
-                stop, current_id = await _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected=getattr(pair, "is_protected", False))
+                stop, current_id = await _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected=getattr(pair, "is_protected", False), pair=pair)
                 batch_advanced = True
                 if stop: break
 
@@ -84,14 +134,14 @@ async def run_backfill(service, user_id, source, destination, from_msg_id, filte
             logger.error(f"Error in backfill {pair_id}: {e}")
             await asyncio.sleep(60)
 
-async def _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected: bool = False):
+async def _process_single_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected: bool = False, pair=None):
     """Rule 8: Helper to flatten run_backfill."""
     from app.utils.protection import AntiBanGuard
     
     # 1. Throttle if needed to avoid bans
     await AntiBanGuard.throttle(pair_id, is_protected=is_protected)
     
-    result = await _deliver_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected=is_protected)
+    result = await _deliver_backfill(service, user_id, destination, msg, pair_id, filter_type, replacement_link, interval_minutes, is_protected=is_protected, pair=pair)
     if result["ok"]:
         async with async_session() as ds:
             await UserRepository(ds).update_pair_start_id(pair_id, msg.id + 1)
@@ -166,7 +216,7 @@ async def _check_ghost(service, user_id, source, msg, pair_id):
         logger.warning(f"Ghost check failed for msg #{msg.id}: {e}")
         return "error"
 
-async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, interval, is_protected: bool = False):
+async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, interval, is_protected: bool = False, pair=None):
     # 1. Pre-check: Failed Media Lock
     locked_ids = service.failed_media_lock.get(pair_id, set())
     if msg.id in locked_ids:
@@ -192,7 +242,8 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
     notifier = service._get_progress_notifier(user_id) if is_protected else None
     if notifier: await notifier("Backfill: Fetching protected media...")
         
-    result = await service._send_with_retry(user_id, dest, msg, pair_id=pair_id, is_protected=is_protected, progress_callback=notifier)
+    stars_price = calculate_stars_price(msg, pair)
+    result = await service._send_with_retry(user_id, dest, msg, pair_id=pair_id, is_protected=is_protected, progress_callback=notifier, stars_price=stars_price)
     if result["ok"]:
         next_dt = datetime.utcnow() + timedelta(minutes=interval)
         async with async_session() as ds:
@@ -268,7 +319,8 @@ async def flush_schedule_loop(service, pair_id, interval_minutes):
         notifier = service._get_progress_notifier(item["user_id"]) if is_protected else None
         if notifier: await notifier("Schedule: Commencing surgical relay...")
         
-        result = await service._send_with_retry(item["user_id"], item["destination"], fresh_msgs, pair_id=pair_id, is_protected=is_protected, progress_callback=notifier)
+        stars_price = calculate_stars_price(fresh_msgs, pair)
+        result = await service._send_with_retry(item["user_id"], item["destination"], fresh_msgs, pair_id=pair_id, is_protected=is_protected, progress_callback=notifier, stars_price=stars_price)
         
         # Handover Protocol: Update pointer in DB to avoid Watchdog double-processing
         if result["ok"]:

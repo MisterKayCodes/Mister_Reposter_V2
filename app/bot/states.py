@@ -17,5 +17,9 @@ class CreatePair(StatesGroup):
     waiting_for_start_message = State()
     waiting_for_confirmation = State()
 
+class FastLaunch(StatesGroup):
+    waiting_for_source = State()
+    waiting_for_destination = State()
+
 class BotSettings(StatesGroup):
     waiting_for_owner_username = State()

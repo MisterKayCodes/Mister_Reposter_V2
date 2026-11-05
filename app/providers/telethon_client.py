@@ -7,12 +7,17 @@ import logging
 import asyncio
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError, FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError, rpcbaseerrors
-from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest
-from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.tl.types import DocumentAttributeVideo, DocumentAttributeFilename, MessageMediaWebPage
+from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest, GetHistoryRequest, SendMediaRequest
+from telethon.tl.functions.channels import JoinChannelRequest, GetFullChannelRequest
+from telethon.tl.types import DocumentAttributeVideo, DocumentAttributeFilename, MessageMediaWebPage, InputMediaPaidMedia
+from telethon import utils
 from telethon.sessions import StringSession
 
 logger = logging.getLogger(__name__)
+
+
+class StarsLockFailed(Exception):
+    pass
 
 class TelethonProvider:
     def __init__(self, api_id: int, api_hash: str):
@@ -206,7 +211,7 @@ class TelethonProvider:
             logger.error(f"Failed to get message count for {source_id}: {e}")
             return -1
 
-    async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None, is_protected: bool = False, progress_callback=None) -> dict:
+    async def send_message(self, user_id: int, destination: str | int, message: any, pair_id: int = None, is_protected: bool = False, progress_callback=None, stars_price: int = 0) -> dict:
         if not await self._ensure_connected(user_id): return {"ok": False, "error": "disconnected"}
         client = self.active_clients.get(user_id)
         
@@ -219,18 +224,25 @@ class TelethonProvider:
             try: target = await client.get_input_entity(target)
             except Exception: target = await self._get_entity_safe(client, target)
 
+            if stars_price > 0 and (is_protected or (isinstance(message, list) and len(message) > 1)):
+                return {"ok": False, "error": "stars_lock_failed", "error_type": "fatal",
+                        "detail": "paid media unsupported for protected/album"}
+
             if is_protected:
                 return await self._download_and_upload(client, target, message, progress_callback=progress_callback)
 
             if isinstance(message, list):
                 if len(message) == 1:
                     message = message[0]
-                    sent = await self._send_single(client, target, message)
+                    sent = await self._send_single(client, target, message, stars_price=stars_price)
                 else:
                     sent = await self._send_album(client, target, message)
             else:
-                sent = await self._send_single(client, target, message)
+                sent = await self._send_single(client, target, message, stars_price=stars_price)
             return {"ok": True, "message": sent}
+        except StarsLockFailed as e:
+            logger.error(f"Stars lock FAILED for Pair #{pair_id}: {e}. Not sending free.")
+            return {"ok": False, "error": "stars_lock_failed", "error_type": "fatal", "detail": str(e)}
         except (FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError) as e:
             refreshed_msg = await self._refresh_media_references(client, message)
             if refreshed_msg:
@@ -238,11 +250,11 @@ class TelethonProvider:
                     if isinstance(refreshed_msg, list):
                         if len(refreshed_msg) == 1:
                             refreshed_msg = refreshed_msg[0]
-                            sent = await self._send_single(client, target, refreshed_msg)
+                            sent = await self._send_single(client, target, refreshed_msg, stars_price=stars_price)
                         else:
                             sent = await self._send_album(client, target, refreshed_msg)
                     else:
-                        sent = await self._send_single(client, target, refreshed_msg)
+                        sent = await self._send_single(client, target, refreshed_msg, stars_price=stars_price)
                     return {"ok": True, "message": sent}
                 except Exception as e2:
                     return {"ok": False, "error": "retry_failed", "error_type": "fatal" if isinstance(e2, (PeerIdInvalidError, rpcbaseerrors.ForbiddenError)) else "retryable", "detail": str(e2)}
@@ -368,13 +380,35 @@ class TelethonProvider:
         if not media_list: raise Exception("empty_album")
         return await client.send_file(target, media_list, caption=getattr(messages[0], "message", ""))
 
-    async def _send_single(self, client, target, message):
+    async def _check_paid_media_allowed(self, client, target) -> bool:
+        try:
+            full = await client(GetFullChannelRequest(channel=target))
+            allowed = getattr(full.full_chat, 'paid_media_allowed', False)
+            return bool(allowed)
+        except Exception as e:
+            logger.warning(f"Stars pre-flight check failed: {e}")
+            return False
+
+    async def _send_single(self, client, target, message, stars_price: int = 0):
         file_id = getattr(message, "cached_file_id", None)
         media = file_id or getattr(message, "media", None)
         if isinstance(media, MessageMediaWebPage):
             media = None
-        # Rule: Never 'Forward' if we want to change the caption.
-        # We pass the media and the (possibly cleaned) message text separately.
+
+        if stars_price > 0 and media:
+            if not await self._check_paid_media_allowed(client, target):
+                raise StarsLockFailed("paid_media_allowed=False on destination channel")
+            try:
+                input_media = utils.get_input_media(media)
+                if not input_media:
+                    raise ValueError("no input media")
+                paid_media = InputMediaPaidMedia(stars_amount=stars_price, extended_media=[input_media])
+                req = SendMediaRequest(peer=target, media=paid_media, message=message.message or "")
+                res = await client(req)
+                return client._get_response_message(req, res, target)
+            except Exception as e:
+                raise StarsLockFailed(str(e)) from e
+
         return await client.send_message(target, message.message, file=media)
 
     async def stop_listener(self, user_id: int):

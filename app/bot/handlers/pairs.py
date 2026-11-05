@@ -7,7 +7,7 @@ import logging
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
-from app.bot.states import CreatePair
+from app.bot.states import CreatePair, FastLaunch
 from app.bot.keyboards import (
     MAX_PAIRS, cancel_kb, filter_kb, schedule_kb,
     session_required_kb, limit_reached_kb, main_menu_kb, 
@@ -16,6 +16,9 @@ from app.bot.keyboards import (
 from app.bot.handlers.utils import (
     repost_service, safe_callback_answer, handle_channel_input
 )
+from app.services.session_manager import SessionService
+from app.data.database import async_session
+from app.data.repository import UserRepository
 from app.core.config import ADMIN_IDS
 
 logger = logging.getLogger(__name__)
@@ -250,3 +253,151 @@ async def cb_confirm_pair(callback: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logger.error(f"Create failed: {e}")
         await callback.message.answer("⚠️ Database error. Try clicking Confirm again.", reply_markup=confirm_pair_kb())
+
+
+# --- EXPRESS FAST LAUNCH WIZARD (2-STEP SETUP) ---
+
+def fast_launch_cancel_kb():
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    b = InlineKeyboardBuilder()
+    b.button(text="❌ Cancel Launch", callback_data="main")
+    return b.as_markup()
+
+def fast_launch_step2_kb():
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    b = InlineKeyboardBuilder()
+    b.button(text="🔙 Back to Step 1", callback_data="fast_launch")
+    b.button(text="❌ Cancel", callback_data="main")
+    b.adjust(1, 1)
+    return b.as_markup()
+
+def fast_launch_success_kb(pair_id: int):
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    b = InlineKeyboardBuilder()
+    b.button(text="📊 Open Live Status Card", callback_data=f"pview_{pair_id}")
+    b.button(text="🚀 Launch Another Pair", callback_data="fast_launch")
+    b.button(text="🏠 Main Menu", callback_data="main")
+    b.adjust(1, 2)
+    return b.as_markup()
+
+@router.callback_query(F.data == "fast_launch")
+async def cb_fast_launch_start(callback: types.CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback, "🚀 Fast Launch...")
+    user_id = callback.from_user.id
+    is_admin = await repost_service.is_admin(user_id)
+
+    if not is_admin:
+        await callback.answer("Please contact support to add new channels.", show_alert=True)
+        return
+
+    pairs = await repost_service.get_user_pairs(user_id)
+    if len(pairs) >= MAX_PAIRS:
+        return await callback.message.edit_text(f"Limit Reached ({MAX_PAIRS})", reply_markup=limit_reached_kb())
+
+    await state.clear()
+    await state.set_state(FastLaunch.waiting_for_source)
+
+    text = (
+        "🚀 <b>FAST LAUNCH • STEP 1 OF 2</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Send me your <b>SOURCE channel</b> where content is reposted from.\n\n"
+        "<b>3 Ways to Connect:</b>\n"
+        "1️⃣ <b>Public Username:</b> e.g. <code>@MySourceChannel</code>\n"
+        "2️⃣ <b>Private Invite Link:</b> e.g. <code>https://t.me/+AbCdEf123456</code>\n"
+        "3️⃣ <b>Forward Post:</b> Simply forward any message from the source channel here.\n\n"
+        "<i>Worker accounts will automatically join or attach via Telethon/Session.</i>"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=fast_launch_cancel_kb(),
+        parse_mode="HTML"
+    )
+
+@router.message(FastLaunch.waiting_for_source)
+async def process_fast_launch_source(message: types.Message, state: FSMContext):
+    resolved = await handle_channel_input(message, state, "source")
+    if not resolved:
+        return
+
+    source_disp = resolved.get("display_name") or resolved["identifier"]
+    await state.update_data(
+        fast_source_id=resolved["identifier"],
+        fast_source_display=source_disp
+    )
+
+    await state.set_state(FastLaunch.waiting_for_destination)
+
+    text = (
+        "🚀 <b>FAST LAUNCH • STEP 2 OF 2</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Source verified: <code>{source_disp}</code> ✅\n\n"
+        "Now send the <b>DESTINATION channel</b> (where reposts will land):\n\n"
+        "<b>Guidelines:</b>\n"
+        "1️⃣ Send username: <code>@MyDestinationChannel</code> or invite link.\n"
+        "2️⃣ Ensure this bot (or the assigned Worker) is added as <b>Admin with Post Messages</b> rights."
+    )
+
+    await message.answer(
+        text,
+        reply_markup=fast_launch_step2_kb(),
+        parse_mode="HTML"
+    )
+
+@router.message(FastLaunch.waiting_for_destination)
+async def process_fast_launch_destination(message: types.Message, state: FSMContext):
+    resolved = await handle_channel_input(message, state, "destination")
+    if not resolved:
+        return
+
+    dest_disp = resolved.get("display_name") or resolved["identifier"]
+    data = await state.get_data()
+    source_id = data.get("fast_source_id")
+    source_disp = data.get("fast_source_display") or source_id
+    user_id = message.from_user.id
+
+    # Auto-worker discovery: find least loaded worker or fallback to user
+    worker_service = SessionService()
+    worker_user = await worker_service.get_least_loaded_worker(niche="nsfw", max_capacity=15)
+
+    assigned_user_id = worker_user.id if worker_user else user_id
+    worker_label = worker_user.username if worker_user and worker_user.username else f"Worker-{assigned_user_id}"
+
+    # Calculate capacity
+    async with async_session() as ds:
+        repo = UserRepository(ds)
+        assigned_pairs = await repo.get_user_pairs(assigned_user_id)
+        assigned_load = sum(1 for p in assigned_pairs if p.is_active) + 1
+
+        new_pair = await repo.add_repost_pair(
+            user_id=assigned_user_id,
+            source=source_id,
+            destination=resolved["identifier"],
+            source_display=source_disp,
+            destination_display=dest_disp,
+            filter_type=1,
+            schedule_interval=240,  # 4h default for monetization
+            stars_price_short=15,
+            stars_price_long=50,
+            stars_cadence=4,
+            active_preset="monetization"
+        )
+
+    await state.clear()
+
+    confirm_text = (
+        "🎉 <b>CHANNEL PAIR CREATED &amp; ACTIVATED!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📡 <b>Route:</b> <code>{source_disp}</code> ➜ <code>{dest_disp}</code>\n"
+        "⚙️ <b>Strategy:</b> 💰 Monetization Beast (Default)\n"
+        f"🤖 <b>Worker Auto-Assigned:</b> <code>{worker_label}</code> (Capacity: {assigned_load}/15)\n"
+        "🟢 <b>Status:</b> Listening for new posts &amp; media queue...\n\n"
+        "First sync check scheduled in <b>4 hours</b> or upon next incoming media."
+    )
+
+    await message.answer(
+        confirm_text,
+        reply_markup=fast_launch_success_kb(new_pair.id),
+        parse_mode="HTML"
+    )
+

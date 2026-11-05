@@ -30,6 +30,7 @@ FILTER_LABELS = {
 
 def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     builder = InlineKeyboardBuilder()
+    builder.button(text="🚀 Fast Launch", callback_data="fast_launch")
     if not has_session:
         builder.button(text="☁️ Upload Session", callback_data="upload")
     builder.button(text="➕ Create Pair", callback_data="create")
@@ -46,13 +47,13 @@ def main_menu_kb(has_session: bool = False, is_admin: bool = False):
     
     # Adjust layout based on role and session
     if not has_session and is_admin:
-        builder.adjust(1, 2, 1, 2, 1, 1)
+        builder.adjust(1, 1, 2, 1, 2, 1, 1)
     elif not has_session:
-        builder.adjust(1, 2, 1, 1)
+        builder.adjust(1, 1, 2, 1, 1)
     elif is_admin:
-        builder.adjust(2, 1, 2, 2, 1, 1)
+        builder.adjust(1, 2, 1, 2, 2, 1, 1)
     else:
-        builder.adjust(2, 1, 2, 1)
+        builder.adjust(1, 2, 1, 2, 1)
     return builder.as_markup()
 
 
@@ -70,16 +71,23 @@ def pairs_kb(pairs, target_id: int = None):
     if len(pairs) < MAX_PAIRS:
         c_data = f"uaddpair_{target_id}" if target_id else "create"
         builder.button(text="➕ Add New Pair", callback_data=c_data)
+        if not target_id:
+            builder.button(text="🚀 Fast Launch", callback_data="fast_launch")
 
     back_data = f"uview_{target_id}" if target_id else "main"
     builder.button(text="🔙 Back", callback_data=back_data)
 
-    # 2 buttons per row for pairs, 1 each for Add and Back
+    # 2 buttons per row for pairs, 1 each for Add, Fast Launch, and Back
     pair_rows = [2] * (len(pairs) // 2)
     if len(pairs) % 2 != 0:
         pair_rows.append(1)
     
-    extra_rows = [1] if len(pairs) < MAX_PAIRS else []
+    extra_rows = []
+    if len(pairs) < MAX_PAIRS:
+        if not target_id:
+            extra_rows.append(2)
+        else:
+            extra_rows.append(1)
     extra_rows.append(1)
 
     builder.adjust(*(pair_rows + extra_rows))
@@ -99,6 +107,8 @@ def pair_detail_kb(pair, target_id: int = None):
     builder.button(text=label, callback_data=f"{prefix}tog_{ext}{pair.id}")
     builder.button(text="🚀 Post One Now", callback_data=f"{prefix}force_{ext}{pair.id}")
 
+    builder.button(text="⚙️ Change Strategy", callback_data=f"{prefix}preset_{ext}{pair.id}")
+
     loop_label = "♻️ Loop: ON" if getattr(pair, "loop_history", False) else "♻️ Loop: OFF"
     builder.button(text=loop_label, callback_data=f"{prefix}loop_{ext}{pair.id}")
 
@@ -109,7 +119,33 @@ def pair_detail_kb(pair, target_id: int = None):
 
     back_data = f"upairs_{target_id}" if target_id else "pairs"
     builder.button(text="🔙 Back to Pairs", callback_data=back_data)
-    builder.adjust(2, 2, 1, 1)
+    builder.adjust(2, 1, 2, 1, 1)
+    return builder.as_markup()
+
+
+def preset_selection_kb(pair_id: int, current_preset: str = "custom", target_id: int = None):
+    """
+    1-column preset selector with dynamic checkmark for active preset.
+    """
+    builder = InlineKeyboardBuilder()
+    prefix = "u" if target_id else ""
+    ext = f"{target_id}_" if target_id else ""
+    curr = (current_preset or "custom").lower()
+
+    presets = [
+        ("aggressive", "🚀 Aggressive Growth (2h • 10/35⭐ • 1:5)"),
+        ("monetization", "💰 Monetization Beast (4h • 15/50⭐ • 1:4)"),
+        ("vip_drip", "👑 Exclusive VIP Drip (6h • 25/75⭐ • 1:2)"),
+        ("custom", "⚪ Custom Rules / OFF"),
+    ]
+
+    for key, label in presets:
+        btn_text = f"✅ {label}" if curr == key else label
+        builder.button(text=btn_text, callback_data=f"{prefix}setpreset_{ext}{pair_id}_{key}")
+
+    back_cb = f"{prefix}pview_{ext}{pair_id}"
+    builder.button(text="🔙 Back to Status Card", callback_data=back_cb)
+    builder.adjust(1)
     return builder.as_markup()
 
 

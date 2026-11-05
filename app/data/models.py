@@ -62,6 +62,12 @@ class RepostPair(Base):
     # Physical Scraping Mode
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
     alerted_caught_up: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Stars Paywall & Strategy Presets
+    stars_price_short: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
+    stars_price_long: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
+    stars_cadence: Mapped[int] = mapped_column(Integer, default=4, server_default='4')
+    active_preset: Mapped[str] = mapped_column(String(64), default='custom', server_default='custom')
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 

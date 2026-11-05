@@ -7,9 +7,11 @@ import uuid
 import os
 import aiofiles
 import logging
+from sqlalchemy import select, func
 from app.providers.telethon_client import TelethonProvider
 from app.data.database import async_session
 from app.data.repository import UserRepository
+from app.data.models import User, RepostPair
 from app.core.config import config
 
 SESSIONS_DIR = "data/sessions"
@@ -51,3 +53,32 @@ class SessionService:
                 await repo.import_session_identity(target_id, username, session_str)
             return True, target_id
         return False, None
+
+    async def get_least_loaded_worker(self, niche: str = "nsfw", max_capacity: int = 15) -> User | None:
+        """
+        Query workers matching niche pattern (e.g. username like worker_{niche}_%),
+        count active pairs assigned to each, and return the one with lowest load < max_capacity.
+        """
+        pattern = f"worker_{niche}_%"
+        async with async_session() as db_session:
+            # Query workers having active sessions and matching username pattern
+            stmt = (
+                select(User, func.count(RepostPair.id).label("pair_count"))
+                .outerjoin(
+                    RepostPair,
+                    (RepostPair.user_id == User.id) & (RepostPair.is_active == True)
+                )
+                .where(
+                    User.username.like(pattern),
+                    User.has_active_session == True
+                )
+                .group_by(User.id)
+                .order_by(func.count(RepostPair.id).asc())
+            )
+            result = await db_session.execute(stmt)
+            candidates = result.all()
+
+            for user, pair_count in candidates:
+                if pair_count < max_capacity:
+                    return user
+            return None

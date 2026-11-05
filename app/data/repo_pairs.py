@@ -17,7 +17,9 @@ class PairRepository:
         filter_type: int = 1, replacement_link: str = None,
         schedule_interval: int = None, start_from_msg_id: int = None,
         is_protected: bool = False,
-        source_display: str = None, destination_display: str = None
+        source_display: str = None, destination_display: str = None,
+        stars_price_short: int = 0, stars_price_long: int = 0,
+        stars_cadence: int = 4, active_preset: str = 'custom'
     ):
         # Rule 5: Check for existing pairs to prevent duplicates
         existing = await self.session.execute(
@@ -43,7 +45,11 @@ class PairRepository:
             is_active=True,
             is_protected=is_protected,
             source_display=source_display,
-            destination_display=destination_display
+            destination_display=destination_display,
+            stars_price_short=stars_price_short,
+            stars_price_long=stars_price_long,
+            stars_cadence=stars_cadence,
+            active_preset=active_preset
         )
         self.session.add(new_pair)
         await self.session.commit()
@@ -271,3 +277,46 @@ class PairRepository:
             await self.session.commit()
             return True
         return False
+
+    async def update_pair_preset(self, pair_id: int, preset_key: str, interval: int, stars_short: int, stars_long: int, cadence: int) -> bool:
+        """Updates automation timing, Stars paywall pricing, and preset tag for a pair."""
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            pair.active_preset = preset_key
+            pair.schedule_interval = interval
+            pair.stars_price_short = stars_short
+            pair.stars_price_long = stars_long
+            pair.stars_cadence = cadence
+            await self.session.commit()
+            return True
+        return False
+
+    async def update_pair_stars_config(
+        self,
+        pair_id: int,
+        stars_price_short: int | None = None,
+        stars_price_long: int | None = None,
+        stars_cadence: int | None = None,
+        active_preset: str | None = None
+    ) -> bool:
+        """Updates specific stars configuration fields on a pair."""
+        result = await self.session.execute(
+            select(RepostPair).where(RepostPair.id == pair_id)
+        )
+        pair = result.scalar_one_or_none()
+        if pair:
+            if stars_price_short is not None:
+                pair.stars_price_short = stars_price_short
+            if stars_price_long is not None:
+                pair.stars_price_long = stars_price_long
+            if stars_cadence is not None:
+                pair.stars_cadence = stars_cadence
+            if active_preset is not None:
+                pair.active_preset = active_preset
+            await self.session.commit()
+            return True
+        return False
+

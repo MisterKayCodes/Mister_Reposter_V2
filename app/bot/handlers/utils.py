@@ -182,6 +182,28 @@ def format_time_left(minutes: int) -> str:
     if hours < 24: return f"{hours}h {minutes % 60}m"
     return f"{hours // 24}d {hours % 24}h"
 
+PRESET_DISPLAY_NAMES = {
+    "aggressive": "🚀 Aggressive Growth",
+    "monetization": "💰 Monetization Beast",
+    "vip_drip": "👑 Exclusive VIP Drip",
+    "custom": "⚪ Custom / OFF"
+}
+
+def format_countdown(seconds: int) -> str:
+    if seconds <= 0:
+        return "Now"
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    if hours > 0:
+        return f"{hours:02d}h {minutes:02d}m {secs:02d}s"
+    return f"{minutes:02d}m {secs:02d}s"
+
+def build_queue_progress_bar(current: int, total: int = 12) -> str:
+    capped = min(max(current, 0), total)
+    filled = int(round((capped / total) * 8)) if total > 0 else 0
+    return f"[{'■' * filled}{'□' * (8 - filled)}]"
+
 async def render_pairs_view(message: types.Message, user_id: int, is_remote: bool = False):
     try:
         pairs = await repost_service.get_user_pairs(user_id)
@@ -208,6 +230,9 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
             
             lines.append(f"<code>{src_str}</code> ➔ <code>{dest_str}</code>")
             
+            preset_name = PRESET_DISPLAY_NAMES.get(getattr(p, "active_preset", "custom") or "custom", "⚪ Custom / OFF")
+            lines.append(f"⚙️ <b>Preset:</b> {preset_name}")
+
             if status == "🔴 Error":
                 lines.append(f"⚠️ <i>{translate_error(repost_service.last_errors.get(p.id))}</i>")
                 
@@ -215,9 +240,8 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
             next_info = repost_service.next_post_info.get(p.id)
             if next_info:
                 remaining = int(max(0, next_info["time"] - time.time()))
-                mins = remaining // 60
                 label = next_info.get("preview", "Next Post")
-                lines.append(f"⏱️ <b>{label}:</b> in {mins}m {remaining % 60}s")
+                lines.append(f"⏱️ <b>{label}:</b> <code>{format_countdown(remaining)}</code>")
             
             loop = "ON" if getattr(p, "loop_history", False) else "OFF"
             lines.append(f"Filter: {FILTER_LABELS.get(p.filter_type)} | Sched: {SCHEDULE_LABELS.get(p.schedule_interval)}")
@@ -234,7 +258,7 @@ async def render_pairs_view(message: types.Message, user_id: int, is_remote: boo
 
 
 async def render_pair_detail_view(message: types.Message, user_id: int, pair_id: int, is_remote: bool = False):
-    """Renders a clean, dedicated control panel for a single pair."""
+    """Renders the Enhanced Live Status Card for a single pair."""
     try:
         pairs = await repost_service.get_user_pairs(user_id)
         pair = next((p for p in pairs if p.id == pair_id), None)
@@ -243,21 +267,65 @@ async def render_pair_detail_view(message: types.Message, user_id: int, pair_id:
             return await message.edit_text("❌ Pair not found.", reply_markup=InlineKeyboardBuilder().button(text="Back", callback_data=back_mark).as_markup())
 
         idx = next((i for i, p in enumerate(pairs, 1) if p.id == pair_id), 1)
-        status = "🟢 Active" if pair.is_active else "🟡 Paused"
+
         if getattr(pair, "status", "") == "error":
-            status = "🔴 Error"
+            state_str = "🔴 <b>ERROR</b>"
+        elif pair.is_active:
+            state_str = "🟢 <b>ACTIVE & STREAMING</b>"
+        else:
+            state_str = "🟡 <b>PAUSED</b>"
 
         src_display = pair.source_display or pair.source_id
         dest_display = pair.destination_display or pair.destination_id
         src_str = f"@{src_display}" if isinstance(src_display, str) and not src_display.startswith("-") and not src_display.startswith("@") and not src_display.isdigit() else src_display
         dest_str = f"@{dest_display}" if isinstance(dest_display, str) and not dest_display.startswith("-") and not dest_display.startswith("@") and not dest_display.isdigit() else dest_display
 
+        preset_key = getattr(pair, "active_preset", "custom") or "custom"
+        preset_badge = PRESET_DISPLAY_NAMES.get(preset_key, "⚪ Custom / OFF")
+
+        # Countdown calculation
+        next_info = repost_service.next_post_info.get(pair.id)
+        if next_info and next_info.get("time"):
+            remaining = int(max(0, next_info["time"] - time.time()))
+            countdown_str = format_countdown(remaining)
+        elif pair.schedule_interval and pair.schedule_interval > 0 and pair.is_active:
+            countdown_str = format_countdown(pair.schedule_interval * 60)
+        elif pair.is_active:
+            countdown_str = "Real-time (Instant)"
+        else:
+            countdown_str = "Paused"
+
+        # Worker Capacity calculation [X/15]
+        active_count = sum(1 for p in pairs if p.is_active)
+        worker_capacity_tag = f"[{active_count}/15]"
+
+        # Queue progress
+        q_len = len(repost_service.schedule_queue.get(pair.id, []))
+        total_slots = 12
+        progress_bar = build_queue_progress_bar(q_len, total_slots)
+
+        # Stars pricing summary
+        stars_short = getattr(pair, "stars_price_short", 0) or 0
+        stars_long = getattr(pair, "stars_price_long", 0) or 0
+        stars_cadence = getattr(pair, "stars_cadence", 4) or 4
+
+        cadence_desc = f"1 in {stars_cadence} posts monetized (⭐ {stars_short} Stars)" if stars_short > 0 else "OFF (Free)"
+        long_desc = f"⭐ {stars_long} Stars Paywall" if stars_long > 0 else "Free"
+
         lines = [
-            f"<b>⚙️ Manage Pair #{idx} [{status}]</b>\n",
-            f"📫 <b>Source:</b> <code>{src_str}</code>",
-            f"📬 <b>Destination:</b> <code>{dest_str}</code>",
-            f"🕒 <b>Schedule:</b> {SCHEDULE_LABELS.get(pair.schedule_interval, 'Instant')}",
-            f"🎯 <b>Filter:</b> {FILTER_LABELS.get(pair.filter_type, 'Keep Original')}",
+            f"📊 <b>REPOSTER STATUS • PAIR #{idx:02d}</b>",
+            "━━━━━━━━━━━━━━━━━━━━━",
+            f"📡 <b>Route:</b> <code>{src_str}</code> ➜ <code>{dest_str}</code>",
+            f"⚙️ <b>Active Preset:</b> {preset_badge}",
+            f"🔄 <b>State:</b> {state_str}\n",
+            f"⏱️ <b>Next Post In:</b> <code>{countdown_str}</code>",
+            f"📦 <b>Queue Backlog:</b> <code>{q_len} / {total_slots} items</code> {progress_bar}",
+            f"🤖 <b>Worker Assigned:</b> <code>Worker-User</code> [Capacity: <b>{worker_capacity_tag}</b>]\n",
+            "⭐ <b>Stars Monetization Cadence:</b>",
+            "• <b>Free:</b> &lt; 2 mins video duration",
+            f"• <b>Cadence:</b> {cadence_desc}",
+            f"• <b>Long Form (&ge;6 mins):</b> {long_desc}\n",
+            f"🕒 <b>Schedule:</b> {SCHEDULE_LABELS.get(pair.schedule_interval, 'Instant')} | 🎯 <b>Filter:</b> {FILTER_LABELS.get(pair.filter_type, 'Keep Original')}",
         ]
 
         if pair.filter_type in [2, 3] and pair.replacement_link:
@@ -268,7 +336,7 @@ async def render_pair_detail_view(message: types.Message, user_id: int, pair_id:
         lines.append(f"♻️ <b>Smart Loop:</b> {loop} | 🔒 <b>Protected:</b> {prot}")
         lines.append(f"📍 <b>Pointer:</b> msg #{pair.start_from_msg_id or 1}")
 
-        if status == "🔴 Error":
+        if getattr(pair, "status", "") == "error":
             lines.append(f"\n⚠️ <b>Error:</b> <i>{translate_error(repost_service.last_errors.get(pair.id))}</i>")
 
         await message.edit_text(
