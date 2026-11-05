@@ -9,6 +9,7 @@ MAX_PAIRS = 8
 
 SCHEDULE_LABELS = {
     0: "Instant",
+    1: "1 Minute",
     5: "5 Minutes",
     15: "15 Minutes",
     30: "30 Minutes",
