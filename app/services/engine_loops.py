@@ -56,10 +56,13 @@ def calculate_stars_price(message, pair) -> int:
 
     # Videos >= 120s and < 360s: Cadence lock with short tier
     cadence = getattr(pair, 'stars_cadence', 4) or 4
-    first_msg = msgs[0] if msgs else None
-    msg_id = getattr(first_msg, 'id', 0) or 0
-    if cadence > 0 and (msg_id % cadence == 0):
-        return max(0, getattr(pair, 'stars_price_short', 0) or 0)
+    if cadence > 0:
+        if not hasattr(calculate_stars_price, "_counters"):
+            calculate_stars_price._counters = {}
+        pair_id = getattr(pair, 'id', 0) or 0
+        calculate_stars_price._counters[pair_id] = calculate_stars_price._counters.get(pair_id, 0) + 1
+        if calculate_stars_price._counters[pair_id] % cadence == 0:
+            return max(0, getattr(pair, 'stars_price_short', 0) or 0)
 
     return 0
 

@@ -32,7 +32,27 @@ class MessageCleaner:
 
         # Mode 3: Nuke & Replace (Rule 11: Total control)
         if mode == 3:
-            return replacement if replacement else ""
+            if not replacement:
+                return ""
+            # Check for multiple rotating templates (JSON array or --- delimiter)
+            templates = []
+            rep_trimmed = replacement.strip()
+            if rep_trimmed.startswith("[") and rep_trimmed.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(rep_trimmed)
+                    if isinstance(parsed, list):
+                        templates = [str(t).strip() for t in parsed if str(t).strip()]
+                except Exception:
+                    templates = []
+            if not templates and "---" in replacement:
+                parts = re.split(r'\n?\s*---\s*\n?', replacement)
+                templates = [p.strip() for p in parts if p.strip()]
+
+            if templates:
+                import random
+                return random.choice(templates)
+            return replacement
 
         def _replace_match(match):
             raw = match.group(0)

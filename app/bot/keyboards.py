@@ -247,9 +247,19 @@ def confirm_pair_kb():
 
 def logs_kb():
     builder = InlineKeyboardBuilder()
-    builder.button(text="Refresh", callback_data="logs")
-    builder.button(text="Back", callback_data="main")
-    builder.adjust(2)
+    builder.button(text="🔄 Refresh", callback_data="logs")
+    builder.button(text="📦 Migration Status", callback_data="migration_status")
+    builder.button(text="⬅️ Back", callback_data="main")
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def migration_status_kb():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔄 Refresh", callback_data="migration_status")
+    builder.button(text="📋 System Logs", callback_data="logs")
+    builder.button(text="⬅️ Main Menu", callback_data="main")
+    builder.adjust(2, 1)
     return builder.as_markup()
 
 
