@@ -246,6 +246,16 @@ class TelethonProvider:
         except (FileReferenceExpiredError, MediaInvalidError, PeerIdInvalidError) as e:
             refreshed_msg = await self._refresh_media_references(client, message)
             if refreshed_msg:
+                # Rule 11: Preserve cleaned/mutated caption across reference refresh
+                if isinstance(refreshed_msg, list) and isinstance(message, list):
+                    for orig, ref in zip(message, refreshed_msg):
+                        if orig and ref:
+                            ref.message = orig.message
+                elif not isinstance(refreshed_msg, list) and not isinstance(message, list):
+                    refreshed_msg.message = message.message
+                elif not isinstance(refreshed_msg, list) and isinstance(message, list) and len(message) > 0:
+                    refreshed_msg.message = message[0].message
+
                 try:
                     if isinstance(refreshed_msg, list):
                         if len(refreshed_msg) == 1:
