@@ -27,7 +27,7 @@ class MessageCleaner:
         2 = Replace with Custom Link / @Username
         3 = Nuke & Replace (Complete message replacement)
         """
-        if not text or mode == 0:
+        if mode == 0 or (not text and mode != 3):
             return text
 
         # Mode 3: Nuke & Replace (Rule 11: Total control)
