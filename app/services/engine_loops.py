@@ -244,6 +244,19 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
         
     notifier = service._get_progress_notifier(user_id) if is_protected else None
     if notifier: await notifier("Backfill: Fetching protected media...")
+
+    # Proactive Fresh Fetch: Re-retrieve fresh attributes and file references 1s before sending
+    if getattr(msg, "media", None) and hasattr(service, "telethon") and pair:
+        try:
+            source_id = getattr(pair, "source_id", None)
+            if source_id:
+                fresh = await service.telethon.get_messages(user_id, source_id, [msg.id])
+                if fresh and fresh[0]:
+                    cleaned_caption = msg.message
+                    msg = fresh[0]
+                    msg.message = cleaned_caption
+        except Exception as e:
+            logger.warning(f"Backfill Fresh Fetch non-fatal error on msg #{msg.id}: {e}")
         
     stars_price = calculate_stars_price(msg, pair)
     result = await service._send_with_retry(user_id, dest, msg, pair_id=pair_id, is_protected=is_protected, progress_callback=notifier, stars_price=stars_price)

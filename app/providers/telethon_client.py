@@ -417,6 +417,24 @@ class TelethonProvider:
                 res = await client(req)
                 return client._get_response_message(req, res, target)
             except Exception as e:
+                err_str = str(e).lower()
+                # 1-time file reference auto-refresh retry for Stars paywalled posts
+                if "file_reference" in err_str or "expired" in err_str or "media_invalid" in err_str:
+                    logger.info(f"[STARS LOCK] File reference expired on msg #{getattr(message, 'id', 'unknown')}. Attempting 1-time fresh re-fetch...")
+                    try:
+                        refreshed = await self._refresh_media_references(client, message)
+                        if refreshed:
+                            message = refreshed
+                            refreshed_media = getattr(message, "cached_file_id", None) or getattr(message, "media", None)
+                            refreshed_input = utils.get_input_media(refreshed_media)
+                            if refreshed_input:
+                                paid_media = InputMediaPaidMedia(stars_amount=stars_price, extended_media=[refreshed_input])
+                                req = SendMediaRequest(peer=target, media=paid_media, message=message.message or "")
+                                res = await client(req)
+                                logger.info(f"✅ [STARS LOCK] Successfully sent paid media after reference refresh for msg #{getattr(message, 'id', '')}")
+                                return client._get_response_message(req, res, target)
+                    except Exception as refresh_err:
+                        logger.error(f"[STARS LOCK] Re-fetch retry also failed: {refresh_err}")
                 raise StarsLockFailed(str(e)) from e
 
         return await client.send_message(target, message.message, file=media)
