@@ -11,7 +11,7 @@ from app.core.config import config
 logger = logging.getLogger(__name__)
 
 SIMULATOR_API_URL = getattr(config, "SIMULATOR_API_URL", "http://127.0.0.1:8012")
-SIMULATOR_API_KEY = getattr(config, "SIMULATOR_API_KEY", "")
+SIMULATOR_API_KEY = getattr(config, "SIMULATOR_API_KEY", "") or getattr(config, "MISTER_SIMULATOR_API_KEY", "") or "msc_simulator_master_key_2026"
 DEFAULT_HYPE_EMOJIS = ["🔥", "👀", "👏", "🚀", "❤️"]
 
 

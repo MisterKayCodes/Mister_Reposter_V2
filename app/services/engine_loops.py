@@ -250,10 +250,10 @@ async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, 
         try:
             source_id = getattr(pair, "source_id", None)
             if source_id:
-                fresh = await service.telethon.get_messages(user_id, source_id, [msg.id])
-                if fresh and fresh[0]:
+                fresh_msg = await service.telethon.get_message(user_id, source_id, msg.id)
+                if fresh_msg:
                     cleaned_caption = msg.message
-                    msg = fresh[0]
+                    msg = fresh_msg
                     msg.message = cleaned_caption
         except Exception as e:
             logger.warning(f"Backfill Fresh Fetch non-fatal error on msg #{msg.id}: {e}")
