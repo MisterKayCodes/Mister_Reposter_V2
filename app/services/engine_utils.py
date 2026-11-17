@@ -99,6 +99,22 @@ async def send_with_retry(service, user_id, destination, message, pair_id=None, 
             if pair_id:
                 async with async_session() as ds:
                     await UserRepository(ds).reset_error_count(pair_id)
+
+            # 🚀 Fire-and-forget Simulator Hype hook
+            try:
+                sent_msg = result.get("message")
+                msg_id = getattr(sent_msg, "id", None)
+                if not msg_id and isinstance(sent_msg, list) and len(sent_msg) > 0:
+                    msg_id = getattr(sent_msg[0], "id", None)
+                elif not msg_id and isinstance(result.get("message_id"), int):
+                    msg_id = result.get("message_id")
+
+                if msg_id and destination:
+                    from app.services.hype_bridge import trigger_simulator_hype
+                    asyncio.create_task(trigger_simulator_hype(destination, msg_id))
+            except Exception as e:
+                logger.warning(f"[HYPE BRIDGE] Hook scheduling error: {e}")
+
             return result
         
         if result.get("error_type") == "transient":
