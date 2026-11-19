@@ -3,6 +3,7 @@ DATA: PAIR REPOSITORY (BASE)
 Separated from repository.py to satisfy line limits (Rule 3).
 Handles all logic specific to RepostPair models.
 """
+from datetime import datetime, timedelta
 from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from .models import RepostPair
@@ -279,7 +280,7 @@ class PairRepository:
         return False
 
     async def update_pair_preset(self, pair_id: int, preset_key: str, interval: int, stars_short: int, stars_long: int, cadence: int) -> bool:
-        """Updates automation timing, Stars paywall pricing, and preset tag for a pair."""
+        """Updates automation timing, Stars paywall pricing, and preset tag for a pair, and recalculates next_allowed_post_at."""
         result = await self.session.execute(
             select(RepostPair).where(RepostPair.id == pair_id)
         )
@@ -290,6 +291,13 @@ class PairRepository:
             pair.stars_price_short = stars_short
             pair.stars_price_long = stars_long
             pair.stars_cadence = cadence
+            if interval and interval > 0:
+                base_time = pair.last_reposted_at or datetime.utcnow()
+                calculated_next = base_time + timedelta(minutes=interval)
+                # If calculated time is in the past, allow post immediately (or within 30s)
+                pair.next_allowed_post_at = max(calculated_next, datetime.utcnow())
+            else:
+                pair.next_allowed_post_at = None
             await self.session.commit()
             return True
         return False

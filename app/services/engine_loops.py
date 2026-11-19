@@ -220,6 +220,13 @@ async def _check_ghost(service, user_id, source, msg, pair_id):
         return "error"
 
 async def _deliver_backfill(service, user_id, dest, msg, pair_id, f_type, repl, interval, is_protected: bool = False, pair=None):
+    # Lock guard: Prevent parallel duplicate dispatch of the same message across backfill and schedule loops
+    dispatch_lock_key = (pair_id, msg.id)
+    if dispatch_lock_key in getattr(service, "_dispatching_msg_ids", set()):
+        logger.warning(f"Backfill: Skipping msg #{msg.id} for Pair #{pair_id} - already in-flight/dispatched.")
+        return {"ok": True, "skipped": True}
+    service._dispatching_msg_ids.add(dispatch_lock_key)
+
     # 1. Pre-check: Failed Media Lock
     locked_ids = service.failed_media_lock.get(pair_id, set())
     if msg.id in locked_ids:
@@ -308,6 +315,13 @@ async def flush_schedule_loop(service, pair_id, interval_minutes):
         if not isinstance(fresh_msgs, list): fresh_msgs = [fresh_msgs]
 
         # 1. Pre-check: Failed Media Lock
+        item_ids = [m.id for m in fresh_msgs if m]
+        if any((pair_id, mid) in getattr(service, "_dispatching_msg_ids", set()) for mid in item_ids):
+            logger.warning(f"Schedule: Skipping msg ids {item_ids} for Pair #{pair_id} - already in-flight.")
+            continue
+        for mid in item_ids:
+            service._dispatching_msg_ids.add((pair_id, mid))
+
         locked_ids = service.failed_media_lock.get(pair_id, set())
         if any(m.id in locked_ids for m in fresh_msgs if m):
             logger.warning(f"Schedule FML: Skipping locked msg ids {item['msg_ids']} for Pair #{pair_id}")

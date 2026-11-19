@@ -124,16 +124,7 @@ async def cb_apply_preset(callback: types.CallbackQuery):
     user_id = callback.from_user.id
 
     cfg = PRESET_CONFIGS.get(preset_key, PRESET_CONFIGS["custom"])
-    async with async_session() as ds:
-        repo = UserRepository(ds)
-        await repo.update_pair_preset(
-            pair_id=pair_id,
-            preset_key=preset_key,
-            interval=cfg["interval"],
-            stars_short=cfg["stars_short"],
-            stars_long=cfg["stars_long"],
-            cadence=cfg["cadence"],
-        )
+    await repost_service.apply_preset_to_pair(user_id=user_id, pair_id=pair_id, preset_key=preset_key, cfg=cfg)
 
     await safe_callback_answer(callback, f"✅ Preset '{preset_key}' applied!")
     await render_pair_detail_view(callback.message, user_id, pair_id)
@@ -147,16 +138,7 @@ async def cb_remote_apply_preset(callback: types.CallbackQuery):
     user_id, pair_id, preset_key = int(parts[1]), int(parts[2]), parts[3]
 
     cfg = PRESET_CONFIGS.get(preset_key, PRESET_CONFIGS["custom"])
-    async with async_session() as ds:
-        repo = UserRepository(ds)
-        await repo.update_pair_preset(
-            pair_id=pair_id,
-            preset_key=preset_key,
-            interval=cfg["interval"],
-            stars_short=cfg["stars_short"],
-            stars_long=cfg["stars_long"],
-            cadence=cfg["cadence"],
-        )
+    await repost_service.apply_preset_to_pair(user_id=user_id, pair_id=pair_id, preset_key=preset_key, cfg=cfg)
 
     await safe_callback_answer(callback, f"✅ Preset '{preset_key}' applied!")
     await render_pair_detail_view(callback.message, user_id, pair_id, is_remote=True)

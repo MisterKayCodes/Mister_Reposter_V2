@@ -30,6 +30,7 @@ class RepostService:
         self._active_listeners = set()
         self.next_post_info, self.last_errors = {}, {}
         self._dedup_seen = {}
+        self._dispatching_msg_ids = set() # (pair_id, msg_id) in-flight lock to eliminate double posts
         self.failed_media_lock = {} # Rule 11: Failed Media Lock (Pair ID -> Set of Msg IDs)
         self._resolved_cache = {}
         self.heartbeat = HeartbeatMonitor(self)
@@ -449,6 +450,50 @@ class RepostService:
                 await repo.update_pair_start_id(pair_id, msg.id + 1)
                 return True
             return False
+
+    async def apply_preset_to_pair(self, user_id: int, pair_id: int, preset_key: str, cfg: dict) -> bool:
+        """Applies a strategy preset, updates the database, resets timers, and restarts backfill loop."""
+        async with async_session() as ds:
+            repo = UserRepository(ds)
+            success = await repo.update_pair_preset(
+                pair_id=pair_id,
+                preset_key=preset_key,
+                interval=cfg["interval"],
+                stars_short=cfg["stars_short"],
+                stars_long=cfg["stars_long"],
+                cadence=cfg["cadence"],
+            )
+            if not success:
+                return False
+            pair = await repo.get_pair_by_id(pair_id)
+
+        # 1. Cancel running loops to break out of old sleep intervals
+        self._cancel_schedule_timer(pair_id)
+        self._cancel_backfill_task(pair_id)
+
+        # 2. Update immediate UI countdown display
+        interval = cfg["interval"]
+        if interval and interval > 0:
+            import time
+            from datetime import datetime
+            if pair.next_allowed_post_at:
+                now_dt = datetime.utcnow()
+                wait_sec = max(0, (pair.next_allowed_post_at - now_dt).total_seconds())
+                self.next_post_info[pair_id] = {
+                    "time": time.time() + wait_sec,
+                    "preview": f"⚡ Preset {preset_key}"
+                }
+
+        # 3. Restart backfill task immediately with new interval if active
+        if pair and pair.is_active and pair.status != "error" and pair.start_from_msg_id and interval:
+            self.backfill_tasks[pair_id] = asyncio.create_task(
+                run_backfill(
+                    self, user_id, pair.source_id, pair.destination_id,
+                    pair.start_from_msg_id, pair.filter_type, pair.replacement_link,
+                    interval, pair_id
+                )
+            )
+        return True
 
     async def update_pair(self, user_id: int, pair_id: int, interval: int = None, filter_type: int = None, replacement: str = None) -> bool:
         """Live-edit a pair's settings without recreating it."""
